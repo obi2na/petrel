@@ -1,0 +1,6 @@
+env:    "local"
+port:   "8080"
+notion:
+  client_id:      "local-client-id"
+  client_secret:  "local-client-secret"
+  redirect_uri:   "http://localhost:8080/auth/notion/callback"
