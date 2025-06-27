@@ -1,0 +1,19 @@
+# Ignore Goland/WebStorm/IntelliJ IDEA settings
+.idea/
+
+# Ignore all .env files (real or variant)
+.env
+.env.*
+
+# Optional: Go build artifacts
+bin/
+*.exe
+*.out
+*.test
+
+# Optional: Dependency directories
+vendor/
+
+# Optional: OS-specific files
+.DS_Store
+Thumbs.db
