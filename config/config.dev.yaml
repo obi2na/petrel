@@ -1,0 +1,5 @@
+env: dev
+port: "8080"
+
+notion:
+  redirect_uri: "http://localhost:8080/auth/notion/callback"

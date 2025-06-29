@@ -7,6 +7,7 @@ import (
 )
 
 func TestLoadConfig(t *testing.T) {
+	t.Setenv("CONFIG_DIR", ".")
 	if err := os.Setenv("APP_ENV", "test"); err != nil {
 		t.Fatalf("TestLoadConfig Failed with %v", err)
 	}

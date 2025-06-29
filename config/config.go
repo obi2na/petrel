@@ -29,45 +29,45 @@ var (
 
 func LoadConfig(env string) (AppConfig, error) {
 	loadOnce.Do(func() {
-		if err := os.Setenv("APP_ENV", env); err != nil {
-			loadErr = err
-			return
+		// Resolve the effective env name
+		if env == "" {
+			env = os.Getenv("APP_ENV")
 		}
-
 		if env == "" {
 			env = "local"
 		}
 
-		configPaths := map[string]string{ //move to root directory before using /config
-			"local": "../../config",
-			"test":  "../config",
+		// Resolve the config directory
+		configDir := os.Getenv("CONFIG_DIR")
+		if configDir == "" {
+			// Use /config in Docker; fallback to ./config locally
+			if _, err := os.Stat("/config"); err == nil {
+				configDir = "/config"
+			} else {
+				configDir = "./config"
+			}
 		}
 
-		configPath, ok := configPaths[env]
-		if !ok {
-			loadErr = fmt.Errorf("unknown environment: %s", env)
-			return
-		}
-
-		log.Printf("Loading config for: %s environment\n", env)
+		log.Printf("📁 Using config path: %s", configDir)
+		log.Printf("🔧 Loading config for: %s environment", env)
 
 		viper.SetConfigName("config." + env)
 		viper.SetConfigType("yaml")
-		viper.AddConfigPath(configPath)
+		viper.AddConfigPath(configDir)
 		viper.AutomaticEnv()
 		viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 		if err := viper.ReadInConfig(); err != nil {
-			loadErr = err
-			return
+			log.Printf("⚠️ Config file not found (%s): %v", env, err)
+			// Not fatal — rely on env vars
 		}
 
 		if err := viper.Unmarshal(&C); err != nil {
-			loadErr = err
+			loadErr = fmt.Errorf("error unmarshalling config: %w", err)
 			return
 		}
 
-		log.Printf("✅ Loaded config for: %s environment\n", C.Env)
+		log.Printf("✅ Loaded config for: %s", C.Env)
 	})
 
 	return C, loadErr
