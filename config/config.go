@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync"
 )
 
 type NotionConfig struct {
@@ -20,43 +21,54 @@ type AppConfig struct {
 	Notion NotionConfig `mapstructure:"notion"`
 }
 
+var (
+	C        AppConfig
+	loadOnce sync.Once
+	loadErr  error
+)
+
 func LoadConfig(env string) (AppConfig, error) {
-	var c AppConfig
+	loadOnce.Do(func() {
+		if err := os.Setenv("APP_ENV", env); err != nil {
+			loadErr = err
+			return
+		}
 
-	if err := os.Setenv("APP_ENV", env); err != nil {
-		return c, err
-	}
+		if env == "" {
+			env = "local"
+		}
 
-	if env == "" {
-		env = "local"
-	}
+		configPaths := map[string]string{ //move to root directory before using /config
+			"local": "../../config",
+			"test":  "../config",
+		}
 
-	configPaths := map[string]string{ //move to root directory before using /config
-		"local": "../../config",
-		"test":  "../config",
-	}
+		configPath, ok := configPaths[env]
+		if !ok {
+			loadErr = fmt.Errorf("unknown environment: %s", env)
+			return
+		}
 
-	configPath, ok := configPaths[env]
-	if !ok {
-		return c, fmt.Errorf("unknown environment: %s", env)
-	}
+		log.Printf("Loading config for: %s environment\n", env)
 
-	log.Printf("Loading config for: %s environment\n", env)
+		viper.SetConfigName("config." + env)
+		viper.SetConfigType("yaml")
+		viper.AddConfigPath(configPath)
+		viper.AutomaticEnv()
+		viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
-	viper.SetConfigName("config." + env)
-	viper.SetConfigType("yaml")
-	viper.AddConfigPath(configPath)
-	viper.AutomaticEnv()
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+		if err := viper.ReadInConfig(); err != nil {
+			loadErr = err
+			return
+		}
 
-	if err := viper.ReadInConfig(); err != nil {
-		return c, err
-	}
+		if err := viper.Unmarshal(&C); err != nil {
+			loadErr = err
+			return
+		}
 
-	if err := viper.Unmarshal(&c); err != nil {
-		return c, err
-	}
+		log.Printf("✅ Loaded config for: %s environment\n", C.Env)
+	})
 
-	log.Printf("✅ Loaded config for: %s environment\n", c.Env)
-	return c, nil
+	return C, loadErr
 }

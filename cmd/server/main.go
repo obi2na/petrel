@@ -20,13 +20,13 @@ func main() {
 	_ = godotenv.Load() //load .env if present
 	c, err := config.LoadConfig(env)
 	if err != nil {
-		log.Fatalf(err.Error())
+		log.Fatalf("Failed to load config : %v", err)
 	}
 
 	logger.Init()
 
 	router := gin.Default()
-	router.Use(middleware.RequestIDMiddleware()) //add Logger middleware to router
+	router.Use(middleware.RequestIDMiddleware()) //add Logger middleware to router. ensures request context has requestID
 	handler.RegisterRoutes(router)               //add handlers to router
 
 	log.Printf("Starting Petrel on port %s... \n", c.Port)
