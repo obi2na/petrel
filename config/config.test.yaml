@@ -4,3 +4,4 @@ notion:
   client_id:      "test-client-id"
   client_secret:  "test-client-secret"
   redirect_uri:   "http://localhost:3001/auth/notion/callback"
+  state_secret:   "secret-signing-key"

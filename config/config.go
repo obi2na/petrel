@@ -13,6 +13,7 @@ type NotionConfig struct {
 	ClientID     string `mapstructure:"client_id"`
 	ClientSecret string `mapstructure:"client_secret"`
 	RedirectURI  string `mapstructure:"redirect_uri"`
+	StateSecret  string `mapstructure:"state_secret"`
 }
 
 type AppConfig struct {
