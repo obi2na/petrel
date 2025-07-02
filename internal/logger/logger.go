@@ -2,6 +2,7 @@ package logger
 
 import (
 	"context"
+	"github.com/obi2na/petrel/config"
 	"go.uber.org/zap"
 	"log"
 )
@@ -12,7 +13,13 @@ const requestIDKey string = "request_id"
 
 func Init() {
 	var err error
-	baseLogger, err = zap.NewProduction()
+	if config.C.Env != "prod" {
+		cfg := zap.NewProductionConfig()
+		cfg.Level = zap.NewAtomicLevelAt(zap.DebugLevel)
+		baseLogger, err = cfg.Build()
+	} else {
+		baseLogger, err = zap.NewProduction()
+	}
 	if err != nil {
 		panic("cannot initialize Zap logger: " + err.Error())
 	}

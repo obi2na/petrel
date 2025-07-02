@@ -51,17 +51,35 @@ func notionAuthCallback(c *gin.Context) {
 
 	logger.With(ctx).Info("Notion OAuth callback", zap.String("code", code), zap.String("state", state))
 
-	// TODO: validate state
+	// Validate signed token
 	if err := auth.ValidateStateJWT(state); err != nil {
-		logger.With(ctx).Warn("Invalid or expired state", zap.Error(err))
+		logger.With(ctx).Warn("Invalid or expired state JWT", zap.Error(err))
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "invalid or expired state",
 		})
 	}
+	logger.With(ctx).Debug("JWT state validation successful", zap.String("code", code))
 
 	// TODO: exchange code for access token
+	token, err := auth.ExchangeCodeForToken(code)
+	if err != nil {
+		logger.With(ctx).Warn("Token exchange failed", zap.Error(err))
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "token exchange failed",
+		})
+	}
+
+	logger.With(ctx).Info("Successfully exchanged token")
+	// Debug log token details (never exposed to user)
+	logger.With(ctx).Debug("Notion token exchanged",
+		zap.String("access_token", token.AccessToken),
+		zap.String("workspace_id", token.WorkspaceID),
+		zap.String("user_email", token.Owner.User.Person.Email),
+		zap.String("user_id", token.Owner.User.ID),
+	)
+
 	c.JSON(http.StatusOK, gin.H{
-		"message": "OAuth Successful ",
-		"code":    code,
+		"status":         "Token Exchanged successfully",
+		"workspace_name": token.WorkspaceName,
 	})
 }
