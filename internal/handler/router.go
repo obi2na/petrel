@@ -40,6 +40,7 @@ func notionAuthRedirect(c *gin.Context) {
 		return
 	}
 	redirectUrl := auth.GetAuthURL(state)
+	logger.With(ctx).Debug("Generated Notion OAuth URL", zap.String("url", redirectUrl))
 	logger.With(ctx).Info("Redirecting to Notion OAuth")
 	c.Redirect(http.StatusFound, redirectUrl)
 }
@@ -60,8 +61,7 @@ func notionAuthCallback(c *gin.Context) {
 	}
 	logger.With(ctx).Debug("JWT state validation successful", zap.String("code", code))
 
-	// TODO: exchange code for access token
-	token, err := auth.ExchangeCodeForToken(code)
+	token, err := auth.ExchangeCodeForToken(code, &http.Client{})
 	if err != nil {
 		logger.With(ctx).Warn("Token exchange failed", zap.Error(err))
 		c.JSON(http.StatusBadRequest, gin.H{

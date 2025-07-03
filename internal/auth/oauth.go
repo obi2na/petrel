@@ -17,6 +17,9 @@ const (
 	tokenURL = "https://api.notion.com/v1/oauth/token"
 )
 
+// GetAuthURL builds the Notion OAuth authorization URL.
+// It accepts a `state` string, which is used to prevent CSRF attacks,
+// and returns the full URL that the user should be redirected to for authorization.
 func GetAuthURL(state string) string {
 	v := url.Values{}
 	v.Set("client_id", config.C.Notion.ClientID)
@@ -28,6 +31,9 @@ func GetAuthURL(state string) string {
 	return fmt.Sprintf("%s?%s", authURL, v.Encode())
 }
 
+// GenerateStateJWT creates a signed JWT token to be used as the `state` parameter
+// in the OAuth authorization URL. The token includes an expiration claim
+// and is signed with the application's Notion state secret
 func GenerateStateJWT() (string, error) {
 	claims := jwt.MapClaims{
 		"exp": time.Now().Add(5 * time.Minute).Unix(), // expires in 5 minutes
@@ -38,10 +44,13 @@ func GenerateStateJWT() (string, error) {
 	return token.SignedString([]byte(config.C.Notion.StateSecret))
 }
 
+// ValidateStateJWT parses and validates the provided state JWT token.
+// It checks that the token is signed with the correct secret,
+// is structurally valid, and has not expired
 func ValidateStateJWT(stateToken string) error {
 	token, err := jwt.Parse(stateToken, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("Unexpected signing method: %v\n", t.Header["alg"])
+			return nil, fmt.Errorf("Unexpected signing method: %v\n", t.Method.Alg())
 		}
 		return []byte(config.C.Notion.StateSecret), nil
 	})
@@ -50,7 +59,7 @@ func ValidateStateJWT(stateToken string) error {
 		return err
 	}
 
-	// check  that signature is valid
+	// type assertion that claims is of jwt.MapClaims
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok || !token.Valid {
 		return fmt.Errorf("invalid token claims")
@@ -68,6 +77,8 @@ func ValidateStateJWT(stateToken string) error {
 	return nil
 }
 
+// TokenResponse represents the JSON structure returned by Notion
+// when exchanging an authorization code for an access token
 type TokenResponse struct {
 	AccessToken   string `json:"access_token"`
 	TokenType     string `json:"token_type"`
@@ -78,11 +89,13 @@ type TokenResponse struct {
 	Owner         Owner  `json:"owner"`
 }
 
+// Owner contains information about the Notion workspace owner.
 type Owner struct {
 	Type string `json:"type"`
 	User User   `json:"user"`
 }
 
+// User represents a user in Notion, including metadata and contact details.
 type User struct {
 	Object    string `json:"object"`
 	ID        string `json:"id"`
@@ -92,11 +105,20 @@ type User struct {
 	Person    Person `json:"person"`
 }
 
+// Person holds personal information like email for a Notion user.
 type Person struct {
 	Email string `json:"email"`
 }
 
-func ExchangeCodeForToken(code string) (*TokenResponse, error) {
+// Interface to allow mocking of http.Client used for ExchangeCodeForToken
+type HTTPClient interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
+// ExchangeCodeForToken exchanges the authorization code for an access token
+// by making a POST request to Notion's OAuth token endpoint.
+// It returns a parsed TokenResponse or an error if the exchange fails
+func ExchangeCodeForToken(code string, client HTTPClient) (*TokenResponse, error) {
 	data := url.Values{}
 	data.Set("grant_type", "authorization_code")
 	data.Set("code", code)
@@ -110,8 +132,7 @@ func ExchangeCodeForToken(code string) (*TokenResponse, error) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.SetBasicAuth(config.C.Notion.ClientID, config.C.Notion.ClientSecret) // prove client identity when exchanging auth code
 
-	//setup client to fire the request
-	client := &http.Client{}
+	//fire the request using client
 	res, err := client.Do(req)
 	if err != nil {
 		return nil, err
