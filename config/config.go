@@ -1,12 +1,17 @@
 package config
 
 import (
+	"context"
 	"fmt"
-	"github.com/spf13/viper"
 	"log"
 	"os"
 	"strings"
 	"sync"
+
+	secretmanager "cloud.google.com/go/secretmanager/apiv1"
+	"cloud.google.com/go/secretmanager/apiv1/secretmanagerpb"
+	"github.com/spf13/viper"
+	"google.golang.org/api/option"
 )
 
 type DBConfig struct {
@@ -78,8 +83,68 @@ func LoadConfig(env string) (AppConfig, error) {
 			return
 		}
 
+		// 🔒 Load secrets from GCP Secret Manager
+		if env != "local" {
+			log.Println("🔐 Fetching secrets from Secret Manager...")
+			if err := injectSecretsFromGCP(); err != nil {
+				loadErr = fmt.Errorf("failed to load secrets: %w", err)
+				return
+			}
+		}
+
 		log.Printf("✅ Loaded config for: %s", C.Env)
 	})
 
 	return C, loadErr
+}
+
+func injectSecretsFromGCP() error {
+
+	//create gcp secret manager client
+	log.Println("Loading Secret Manager Client")
+	ctx := context.Background()
+	client, err := secretmanager.NewClient(ctx, option.WithCredentialsFile(os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")))
+	if err != nil {
+		fmt.Errorf("failed to create Secret Manager client: %w", err)
+	}
+	defer client.Close()
+	log.Println("Secret Manager Client loaded successfully")
+
+	projectId := os.Getenv("GCP_PROJECT_ID")
+	if projectId == "" {
+		return fmt.Errorf("GCP_PROJECT_ID environment variable is not set")
+	}
+
+	//Helper to fetch secrets
+	get := func(secretID string) (string, error) {
+		resourceName := fmt.Sprintf("projects/%s/secrets/%s/versions/latest", projectId, secretID)
+		req := &secretmanagerpb.AccessSecretVersionRequest{
+			Name: resourceName,
+		}
+
+		result, err := client.AccessSecretVersion(ctx, req)
+		if err != nil {
+			return "", fmt.Errorf("failed to access secret: %w", err)
+		}
+		return string(result.Payload.Data), nil
+	}
+
+	// Inject secrets
+	var secrets = map[string]*string{
+		"notion-client-id":    &C.Notion.ClientID,
+		"notion-oauth-secret": &C.Notion.ClientSecret,
+		"notion-state-secret": &C.Notion.StateSecret,
+		"petrel-db-password":  &C.DB.Password,
+		"petrel-db-name":      &C.DB.DBName,
+	}
+
+	for secretID, target := range secrets {
+		val, err := get(secretID)
+		if err != nil {
+			return err
+		}
+		*target = val //dereference and place value
+	}
+
+	return nil
 }
