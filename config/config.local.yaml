@@ -1,5 +1,12 @@
 env:    "local"
 port:   "8080"
+db:
+  host:       "localhost"
+  port:       5432
+  user:       petrel
+  password:   password
+  dbname:     petrel_local
+  sslmode:    disable
 notion:
   client_id:      "local-client-id"
   client_secret:  "local-client-secret"

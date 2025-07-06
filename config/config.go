@@ -9,6 +9,15 @@ import (
 	"sync"
 )
 
+type DBConfig struct {
+	Host     string `mapstructure:"host"`
+	Port     string `mapstructure:"port"`
+	User     string `mapstructure:"user"`
+	Password string `mapstructure:"password"`
+	DBName   string `mapstructure:"dbname"`
+	SSLMode  string `mapstructure:"sslmode"`
+}
+
 type NotionConfig struct {
 	ClientID     string `mapstructure:"client_id"`
 	ClientSecret string `mapstructure:"client_secret"`
@@ -19,6 +28,7 @@ type NotionConfig struct {
 type AppConfig struct {
 	Env    string       `mapstructure:"env"`
 	Port   string       `mapstructure:"port"`
+	DB     DBConfig     `mapstructure:"db"`
 	Notion NotionConfig `mapstructure:"notion"`
 }
 

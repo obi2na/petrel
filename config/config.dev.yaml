@@ -1,5 +1,12 @@
 env: dev
 port: "8080"
+db:
+  host: <GCP_INSTANCE_IP>
+  port: 5432
+  user: <your-user>
+  password: <your-password>
+  dbname: petrel
+  sslmode: require
 
 notion:
   redirect_uri: "http://localhost:8080/auth/notion/callback"

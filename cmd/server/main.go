@@ -5,6 +5,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/obi2na/petrel/config"
+	"github.com/obi2na/petrel/internal/db"
 	"github.com/obi2na/petrel/internal/handler"
 	"github.com/obi2na/petrel/internal/logger"
 	"github.com/obi2na/petrel/internal/middleware"
@@ -23,7 +24,15 @@ func main() {
 		log.Fatalf("Failed to load config : %v", err)
 	}
 
-	logger.Init()
+	//connect to DB
+	dbConn, err := db.Connect()
+	if err != nil {
+		log.Fatalf("Failed to connect to DB: %v", err)
+	}
+	defer dbConn.Close()
+	log.Println("DB connection successful")
+
+	logger.Init() //initialize singleton logger for application
 
 	router := gin.Default()
 	router.Use(middleware.RequestIDMiddleware()) //add Logger middleware to router. ensures request context has requestID
