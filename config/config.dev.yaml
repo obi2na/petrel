@@ -8,4 +8,4 @@ db:
   sslmode: require
 
 notion:
-  redirect_uri: "http://localhost:8080/auth/notion/callback"
+  redirect_uri: "https://petrel-rxvkzfyn3q-uc.a.run.app/auth/notion/callback"
