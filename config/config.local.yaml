@@ -12,3 +12,8 @@ notion:
   client_secret:  "local-client-secret"
   state_secret:   "local-secret"
   redirect_uri:   "http://localhost:8080/auth/notion/callback"
+auth0:
+  domain:           "auth0-domain-id"
+  client_id:        "local-client-id"
+  client_secret:    "local-client-secret"
+  connection:       "email"

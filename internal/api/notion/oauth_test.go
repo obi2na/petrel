@@ -1,4 +1,4 @@
-package auth
+package notion
 
 import (
 	"encoding/json"

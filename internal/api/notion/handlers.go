@@ -1,37 +1,16 @@
-package handler
+package notion
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/obi2na/petrel/internal/auth"
 	"github.com/obi2na/petrel/internal/logger"
 	"go.uber.org/zap"
 	"net/http"
 )
 
-const (
-	HealthPath         = "/health"
-	NotionAuthCallback = "auth/notion/callback"
-	NotionAuthPath     = "/auth/notion"
-)
-
-func RegisterRoutes(r *gin.Engine) {
-	r.GET(HealthPath, appHealth)
-	r.GET(NotionAuthPath, notionAuthRedirect)
-	r.GET(NotionAuthCallback, notionAuthCallback)
-}
-
-func appHealth(c *gin.Context) {
-	ctx := c.Request.Context()
-	logger.With(ctx).Info("Health check requested")
-	c.JSON(http.StatusOK, gin.H{
-		"status": "Petrel is healthy",
-	})
-}
-
 // redirect for authorization
-func notionAuthRedirect(c *gin.Context) {
+func NotionAuthRedirect(c *gin.Context) {
 	ctx := c.Request.Context()
-	state, err := auth.GenerateStateJWT()
+	state, err := GenerateStateJWT()
 	if err != nil {
 		logger.With(ctx).Error("Failed to generate JWT state", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -39,13 +18,13 @@ func notionAuthRedirect(c *gin.Context) {
 		})
 		return
 	}
-	redirectUrl := auth.GetAuthURL(state)
+	redirectUrl := GetAuthURL(state)
 	logger.With(ctx).Debug("Generated Notion OAuth URL", zap.String("url", redirectUrl))
 	logger.With(ctx).Info("Redirecting to Notion OAuth")
 	c.Redirect(http.StatusFound, redirectUrl)
 }
 
-func notionAuthCallback(c *gin.Context) {
+func NotionAuthCallback(c *gin.Context) {
 	ctx := c.Request.Context()
 	code := c.Query("code")
 	state := c.Query("state")
@@ -53,7 +32,7 @@ func notionAuthCallback(c *gin.Context) {
 	logger.With(ctx).Info("Notion OAuth callback", zap.String("code", code), zap.String("state", state))
 
 	// Validate signed token
-	if err := auth.ValidateStateJWT(state); err != nil {
+	if err := ValidateStateJWT(state); err != nil {
 		logger.With(ctx).Warn("Invalid or expired state JWT", zap.Error(err))
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "invalid or expired state",
@@ -61,7 +40,7 @@ func notionAuthCallback(c *gin.Context) {
 	}
 	logger.With(ctx).Debug("JWT state validation successful", zap.String("code", code))
 
-	token, err := auth.ExchangeCodeForToken(code, &http.Client{})
+	token, err := ExchangeCodeForToken(code, &http.Client{})
 	if err != nil {
 		logger.With(ctx).Warn("Token exchange failed", zap.Error(err))
 		c.JSON(http.StatusBadRequest, gin.H{

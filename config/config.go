@@ -14,6 +14,13 @@ import (
 	"google.golang.org/api/option"
 )
 
+type Auth0Config struct {
+	Domain       string `mapstructure:"domain"`
+	ClientID     string `mapstructure:"client_id"`
+	ClientSecret string `mapstructure:"client_secret"`
+	Connection   string `mapstructure:"connection"`
+}
+
 type DBConfig struct {
 	Host     string `mapstructure:"host"`
 	Port     string `mapstructure:"port"`
@@ -35,6 +42,7 @@ type AppConfig struct {
 	Port   string       `mapstructure:"port"`
 	DB     DBConfig     `mapstructure:"db"`
 	Notion NotionConfig `mapstructure:"notion"`
+	Auth0  Auth0Config  `mapstructure:"auth0"`
 }
 
 var (
@@ -136,6 +144,9 @@ func injectSecretsFromGCP() error {
 		"notion-state-secret": &C.Notion.StateSecret,
 		"petrel-db-password":  &C.DB.Password,
 		"petrel-db-name":      &C.DB.DBName,
+		"auth0-client-secret": &C.Auth0.ClientSecret,
+		"auth0-domain":        &C.Auth0.Domain,
+		"auth0-client-id":     &C.Auth0.ClientID,
 	}
 
 	for secretID, target := range secrets {

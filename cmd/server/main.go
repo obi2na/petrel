@@ -5,8 +5,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/obi2na/petrel/config"
+	"github.com/obi2na/petrel/internal/api"
 	"github.com/obi2na/petrel/internal/db"
-	"github.com/obi2na/petrel/internal/handler"
 	"github.com/obi2na/petrel/internal/logger"
 	"github.com/obi2na/petrel/internal/middleware"
 
@@ -36,7 +36,7 @@ func main() {
 
 	router := gin.Default()
 	router.Use(middleware.RequestIDMiddleware()) //add Logger middleware to router. ensures request context has requestID
-	handler.RegisterRoutes(router)               //add handlers to router
+	api.RegisterRoutes(router)                   //add handlers to router
 
 	log.Printf("Starting Petrel on port %s... \n", c.Port)
 	err = router.Run()

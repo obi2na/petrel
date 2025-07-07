@@ -14,10 +14,10 @@ import (
 
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (
-    id, email, name, avatar_url, provider
+    id, email, name, avatar_url, provider, created_at, updated_at
 )
 VALUES (
-           $1, $2, $3, $4, $5
+           $1, $2, $3, $4, $5, now(), now()
        )
     RETURNING id, email, name, avatar_url, is_active, provider, last_login_at, created_at, updated_at
 `
