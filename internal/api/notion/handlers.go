@@ -7,6 +7,11 @@ import (
 	"net/http"
 )
 
+func RegisterNotionRoutes(r *gin.RouterGroup) {
+	r.GET("/auth", NotionAuthRedirect)
+	r.GET("/auth/callback", NotionAuthCallback)
+}
+
 // redirect for authorization
 func NotionAuthRedirect(c *gin.Context) {
 	ctx := c.Request.Context()

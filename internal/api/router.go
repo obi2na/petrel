@@ -2,21 +2,24 @@ package api
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/obi2na/petrel/internal/api/auth"
 	"github.com/obi2na/petrel/internal/api/notion"
 	"github.com/obi2na/petrel/internal/logger"
 	"net/http"
 )
 
 const (
-	HealthPath         = "/health"
-	NotionAuthCallback = "auth/notion/callback"
-	NotionAuthPath     = "/auth/notion"
+	HealthPath = "/health"
 )
 
 func RegisterRoutes(r *gin.Engine) {
 	r.GET(HealthPath, appHealth)
-	r.GET(NotionAuthPath, notion.NotionAuthRedirect)
-	r.GET(NotionAuthCallback, notion.NotionAuthCallback)
+
+	authGroup := r.Group("/auth")
+	auth.RegisterAuthRoutes(authGroup)
+
+	notionGroup := r.Group("/notion")
+	notion.RegisterNotionRoutes(notionGroup)
 }
 
 func appHealth(c *gin.Context) {
