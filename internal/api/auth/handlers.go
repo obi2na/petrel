@@ -1,20 +1,26 @@
 package auth
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/obi2na/petrel/config"
 	"github.com/obi2na/petrel/internal/logger"
+	"github.com/obi2na/petrel/internal/service/auth"
 	"go.uber.org/zap"
-	"io"
 	"net/http"
 	"time"
 )
 
+var httpClient = &http.Client{
+	Timeout: 10 * time.Second,
+}
+
 func RegisterAuthRoutes(r *gin.RouterGroup) {
-	r.POST("/login", StartMagicLink)
+	//create auth service
+	auth0 := authService.NewAuthService(config.C.Auth0, httpClient)
+	authHandler := NewHandler(auth0)
+
+	//register routes gotten from authHadler
+	r.POST("/login", authHandler.StartLoginWithMagicLink)
 	// Add more auth routes here later
 }
 
@@ -22,12 +28,15 @@ type MagicLinkRequest struct {
 	Email string `json:"email" binding:"required,email"`
 }
 
-var httpClient = &http.Client{
-	Timeout: 10 * time.Second,
+type Handler struct {
+	Service authService.AuthService
 }
 
-// StartMagicLink initiates a magic-link flow using Auth0
-func StartMagicLink(c *gin.Context) {
+func NewHandler(service authService.AuthService) *Handler {
+	return &Handler{service}
+}
+
+func (h *Handler) StartLoginWithMagicLink(c *gin.Context) {
 	ctx := c.Request.Context()
 	var req MagicLinkRequest
 	// 	c.ShouldBindJson tells gin to
@@ -42,61 +51,14 @@ func StartMagicLink(c *gin.Context) {
 		return
 	}
 
-	logger.With(ctx).Info(req.Email)
+	logger.With(ctx).Info("email extracted from /login response body",
+		zap.String("email", req.Email),
+	)
 
-	domain := config.C.Auth0.Domain
-	clientID := config.C.Auth0.ClientID
-	connection := config.C.Auth0.Connection
-	clientSecret := config.C.Auth0.ClientSecret
-
-	payload := getPayload(clientID, clientSecret, connection, req.Email)
-
-	jsonPayload, err := json.Marshal(payload)
-	if err != nil {
-		logger.With(ctx).Error("Failed to marshal json payload", zap.Error(err))
+	// initiates a magic-link flow using Auth0
+	if err := h.Service.SendMagicLink(ctx, req.Email); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Internal Error",
-		})
-		return
-	}
-
-	url := fmt.Sprintf("https://%s/passwordless/start", domain)
-	reqBody := bytes.NewBuffer(jsonPayload)
-
-	httpReq, err := http.NewRequest("POST", url, reqBody)
-	if err != nil {
-		logger.With(ctx).Error("Failed to create request", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Internal Error",
-		})
-		return
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	resp, err := httpClient.Do(httpReq)
-	if err != nil {
-		logger.With(ctx).Error("Request to Auth0 failed", zap.Error(err))
-		c.JSON(http.StatusBadGateway, gin.H{
-			"error": "Failed to connect to Auth0 Service",
-		})
-		return
-	}
-	defer resp.Body.Close()
-
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		logger.With(ctx).Error("Failed to read response from Auth0", zap.Error(err))
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read response from Auth0"})
-		return
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		logger.With(ctx).Error("Auth0 returned non-200 statud",
-			zap.Int("status", resp.StatusCode),
-			zap.ByteString("response", bodyBytes),
-			zap.Error(err))
-		c.JSON(http.StatusBadGateway, gin.H{
-			"error": "Auth0 Service error",
+			"error": "Failed to send magic link",
 		})
 		return
 	}
@@ -104,14 +66,4 @@ func StartMagicLink(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Magic link sent",
 	})
-}
-
-func getPayload(clientID, clientSecret, connection, email string) map[string]interface{} {
-	return map[string]interface{}{
-		"client_id":     clientID,
-		"client_secret": clientSecret,
-		"connection":    connection,
-		"email":         email,
-		"send":          "link",
-	}
 }
