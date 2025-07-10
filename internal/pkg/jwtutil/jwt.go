@@ -52,7 +52,10 @@ func ValidateStateJWT(stateToken, stateSecret string) error {
 	return nil
 }
 
-// TODO: Verify id token to complete flow
+// TODO: Verify ID token signature and claims using Auth0's JWKS
+// 1. Fetch JWKS from https://<your-auth0-domain>/.well-known/jwks.json
+// 2. Match the `kid` in token header to key in JWKS
+// 3. Use key to verify token signature and standard claims (exp, aud, iss)
 func ExtractEmailFromIDToken(idToken string) (string, error) {
 	token, _, err := new(jwt.Parser).ParseUnverified(idToken, jwt.MapClaims{})
 	if err != nil {
