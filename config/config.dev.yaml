@@ -1,5 +1,8 @@
 env: dev
 port: "8080"
+cors:
+  allow_origins:
+    - "http://localhost:8000" #TODO: for testing. change once frontend is up
 db:
   host: 10.10.0.3
   name: petrel-dev-db

@@ -14,6 +14,10 @@ import (
 	"google.golang.org/api/option"
 )
 
+type CORSConfig struct {
+	AllowOrigins []string `mapstructure:"allow_origins"`
+}
+
 type Auth0Config struct {
 	Domain       string `mapstructure:"domain"`
 	ClientID     string `mapstructure:"client_id"`
@@ -45,6 +49,7 @@ type AppConfig struct {
 	DB     DBConfig     `mapstructure:"db"`
 	Notion NotionConfig `mapstructure:"notion"`
 	Auth0  Auth0Config  `mapstructure:"auth0"`
+	CORS   CORSConfig   `mapstructure:"cors"`
 }
 
 var (

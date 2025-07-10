@@ -15,6 +15,7 @@ import (
 
 type AuthService interface {
 	SendMagicLink(ctx context.Context, email string) error
+	CompleteMagicLink(ctx context.Context, code, state string) (string, error)
 }
 
 type Auth0Service struct {
@@ -83,6 +84,75 @@ func (s *Auth0Service) SendMagicLink(ctx context.Context, email string) error {
 	return nil
 }
 
+func (s *Auth0Service) CompleteMagicLink(ctx context.Context, code, state string) (string, error) {
+	if code == "" || state == "" {
+		logger.With(ctx).Error("Missing code or state in callback")
+		return "", fmt.Errorf("Missing code or state in callback")
+	}
+
+	// 1. validate state
+	if err := jwtutil.ValidateStateJWT(state, config.C.Auth0.StateSecret); err != nil {
+		logger.With(ctx).Error("Invalid state token", zap.Error(err))
+		return "", err
+	}
+
+	// 2. Exchange code for tokens via Auth0
+	tokenResp, err := s.ExchangeCodeForToken(ctx, code)
+	if err != nil {
+		logger.With(ctx).Error("Failed to exchange code for token", zap.Error(err))
+		return "", err
+	}
+
+	// 3. extract email from ID token
+	email, err := jwtutil.ExtractEmailFromIDToken(tokenResp.IDToken)
+	if err != nil {
+		logger.With(ctx).Error("Failed to parse ID token", zap.Error(err))
+		return "", err
+	}
+
+	logger.With(ctx).Info("email extracted from id_token",
+		zap.String("email", email),
+	)
+
+	// TODO: 4. Lookup or create user in DB
+
+	return email, nil
+}
+
+func (s *Auth0Service) ExchangeCodeForToken(ctx context.Context, code string) (*TokenResponse, error) {
+	data := map[string]string{
+		"grant_type":    "authorization_code",
+		"client_id":     s.ClientID,
+		"client_secret": s.ClientSecret,
+		"code":          code,
+		"redirect_uri":  s.RedirectURI,
+	}
+	jsonData, _ := json.Marshal(data)
+	auth0Url := fmt.Sprintf("https://%s/oauth/token", s.Domain)
+
+	req, _ := http.NewRequest("POST", auth0Url, bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		logger.With(ctx).Error("Request to Auth0 failed", zap.Error(err))
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		logger.With(ctx).Error("auth0 token exchange failed", zap.Error(err))
+		return nil, fmt.Errorf("auth0 token exchange failed: %s", body)
+	}
+
+	var tokenResp TokenResponse
+	if err := json.Unmarshal(body, &tokenResp); err != nil {
+		return nil, err
+	}
+	return &tokenResp, nil
+}
+
 func buildMagicLinkPayload(clientID, clientSecret, connection, email, state string) map[string]interface{} {
 	return map[string]interface{}{
 		"client_id":     clientID,
@@ -94,4 +164,11 @@ func buildMagicLinkPayload(clientID, clientSecret, connection, email, state stri
 			"state": state,
 		},
 	}
+}
+
+type TokenResponse struct {
+	AccessToken string `json:"access_token"`
+	IDToken     string `json:"id_token"`
+	TokenType   string `json:"token_type"`
+	ExpiresIn   int    `json:"expires_in"`
 }

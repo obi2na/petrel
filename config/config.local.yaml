@@ -1,5 +1,8 @@
 env:    "local"
 port:   "8080"
+cors:
+  allow_origins:
+    - "http://localhost:8000"
 db:
   host:       "localhost"
   port:       5432

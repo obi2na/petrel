@@ -51,3 +51,18 @@ func ValidateStateJWT(stateToken, stateSecret string) error {
 
 	return nil
 }
+
+// TODO: Verify id token to complete flow
+func ExtractEmailFromIDToken(idToken string) (string, error) {
+	token, _, err := new(jwt.Parser).ParseUnverified(idToken, jwt.MapClaims{})
+	if err != nil {
+		return "", fmt.Errorf("parsing id token failed: %w", err)
+	}
+
+	if claims, ok := token.Claims.(jwt.MapClaims); ok {
+		if email, ok := claims["email"].(string); ok {
+			return email, nil
+		}
+	}
+	return "", fmt.Errorf("email not found in ID token")
+}

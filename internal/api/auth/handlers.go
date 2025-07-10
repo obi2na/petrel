@@ -1,9 +1,11 @@
 package auth
 
 import (
+	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/obi2na/petrel/config"
 	"github.com/obi2na/petrel/internal/logger"
+	"github.com/obi2na/petrel/internal/pkg/jwtutil"
 	"github.com/obi2na/petrel/internal/service/auth"
 	"go.uber.org/zap"
 	"net/http"
@@ -20,8 +22,8 @@ func RegisterAuthRoutes(r *gin.RouterGroup) {
 	authHandler := NewHandler(auth0)
 
 	//register routes gotten from authHadler
-	r.POST("/login", authHandler.StartLoginWithMagicLink)
-	// Add more auth routes here later
+	r.GET("/login", authHandler.BeginLogin)
+	r.GET("/callback", authHandler.Callback)
 }
 
 type MagicLinkRequest struct {
@@ -36,6 +38,7 @@ func NewHandler(service authService.AuthService) *Handler {
 	return &Handler{service}
 }
 
+// TODO: complete this when ready to setup frontend
 func (h *Handler) StartLoginWithMagicLink(c *gin.Context) {
 	ctx := c.Request.Context()
 	var req MagicLinkRequest
@@ -66,4 +69,43 @@ func (h *Handler) StartLoginWithMagicLink(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Magic link sent",
 	})
+}
+
+func (h *Handler) Callback(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	logger.With(ctx).Info("/auth/callback hit")
+
+	code := c.Query("code")
+	state := c.Query("state")
+
+	email, err := h.Service.CompleteMagicLink(ctx, code, state)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "Authentication Failed",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Token exchange successful",
+		"email":   email,
+	})
+}
+
+// using this to confirm backend login flow works
+func (h *Handler) BeginLogin(c *gin.Context) {
+	state, err := jwtutil.GenerateStateJWT(config.C.Auth0.StateSecret)
+	if err != nil {
+		logger.With(c.Request.Context()).Error("Failed to generate state token", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+		return
+	}
+
+	authURL := fmt.Sprintf(
+		"https://%s/authorize?response_type=code&client_id=%s&redirect_uri=%s&scope=openid%%20email&state=%s",
+		config.C.Auth0.Domain, config.C.Auth0.ClientID, config.C.Auth0.RedirectURI, state,
+	)
+
+	c.Redirect(http.StatusFound, authURL)
 }
