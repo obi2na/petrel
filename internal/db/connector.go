@@ -1,37 +1,31 @@
 package db
 
 import (
-	"database/sql"
+	"context"
 	"fmt"
-	_ "github.com/lib/pq" // PostgreSQL driver
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/obi2na/petrel/config"
 	"log"
 )
 
-var DB *sql.DB
-
-func Connect() (*sql.DB, error) {
+func Connect() (*pgxpool.Pool, error) {
 	log.Println("connecting to database")
-
 	dbConfigs := config.C.DB
-
 	dsn := fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-		dbConfigs.Host, dbConfigs.Port, dbConfigs.User, dbConfigs.Password, dbConfigs.DBName,
+		"postgres://%s:%s@%s:%s/%s",
+		dbConfigs.User, dbConfigs.Password, dbConfigs.Host, dbConfigs.Port, dbConfigs.DBName,
 	)
 
-	db, err := sql.Open("postgres", dsn)
+	dbpool, err := pgxpool.New(context.Background(), dsn)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open Database: %w", err)
+		return nil, fmt.Errorf("failed to create pgx pool: %w", err)
 	}
 
 	log.Println("pinging database")
-	//test database connection
-	if err := db.Ping(); err != nil {
-		return nil, fmt.Errorf("failed to ping database: %w", err)
+	if err := dbpool.Ping(context.Background()); err != nil {
+		return nil, fmt.Errorf("failed to ping pgx pool: %w", err)
 	}
-	log.Println("database connection completed successfully")
+	log.Println("pinged database successfully")
 
-	DB = db
-	return DB, nil
+	return dbpool, nil
 }
