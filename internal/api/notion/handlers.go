@@ -2,7 +2,9 @@ package notion
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/obi2na/petrel/config"
 	"github.com/obi2na/petrel/internal/logger"
+	"github.com/obi2na/petrel/internal/pkg/jwtutil"
 	"go.uber.org/zap"
 	"net/http"
 )
@@ -15,7 +17,7 @@ func RegisterNotionRoutes(r *gin.RouterGroup) {
 // redirect for authorization
 func NotionAuthRedirect(c *gin.Context) {
 	ctx := c.Request.Context()
-	state, err := GenerateStateJWT()
+	state, err := jwtutil.GenerateStateJWT(config.C.Notion.StateSecret)
 	if err != nil {
 		logger.With(ctx).Error("Failed to generate JWT state", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -37,7 +39,7 @@ func NotionAuthCallback(c *gin.Context) {
 	logger.With(ctx).Info("Notion OAuth callback", zap.String("code", code), zap.String("state", state))
 
 	// Validate signed token
-	if err := ValidateStateJWT(state); err != nil {
+	if err := jwtutil.ValidateStateJWT(state, config.C.Notion.StateSecret); err != nil {
 		logger.With(ctx).Warn("Invalid or expired state JWT", zap.Error(err))
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "invalid or expired state",

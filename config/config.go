@@ -19,6 +19,8 @@ type Auth0Config struct {
 	ClientID     string `mapstructure:"client_id"`
 	ClientSecret string `mapstructure:"client_secret"`
 	Connection   string `mapstructure:"connection"`
+	RedirectURI  string `mapstructure:"redirect_uri"`
+	StateSecret  string `mapstructure:"state_secret"`
 }
 
 type DBConfig struct {

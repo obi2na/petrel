@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/obi2na/petrel/config"
 	"github.com/obi2na/petrel/internal/logger"
+	"github.com/obi2na/petrel/internal/pkg/jwtutil"
 	"go.uber.org/zap"
 	"io"
 	"net/http"
@@ -29,8 +30,16 @@ func NewAuthService(cfg config.Auth0Config, client *http.Client) *Auth0Service {
 }
 
 func (s *Auth0Service) SendMagicLink(ctx context.Context, email string) error {
+
+	//generate state JWT
+	state, err := jwtutil.GenerateStateJWT(config.C.Auth0.StateSecret)
+	if err != nil {
+		logger.With(ctx).Error("Failed to generate state", zap.Error(err))
+		return fmt.Errorf("internal error")
+	}
+
 	// setup payload that will be used in request body
-	payload := buildMagicLinkPayload(s.ClientID, s.ClientSecret, s.Connection, email)
+	payload := buildMagicLinkPayload(s.ClientID, s.ClientSecret, s.Connection, email, state)
 	jsonPayload, err := json.Marshal(payload)
 	if err != nil {
 		logger.With(ctx).Error("Failed to marshal json payload", zap.Error(err))
@@ -74,12 +83,15 @@ func (s *Auth0Service) SendMagicLink(ctx context.Context, email string) error {
 	return nil
 }
 
-func buildMagicLinkPayload(clientID, clientSecret, connection, email string) map[string]interface{} {
+func buildMagicLinkPayload(clientID, clientSecret, connection, email, state string) map[string]interface{} {
 	return map[string]interface{}{
 		"client_id":     clientID,
 		"client_secret": clientSecret,
 		"connection":    connection,
 		"email":         email,
 		"send":          "link",
+		"authParams": map[string]interface{}{
+			"state": state,
+		},
 	}
 }
