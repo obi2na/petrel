@@ -37,7 +37,7 @@ func main() {
 	router := gin.Default()
 	router.Use(middleware.RequestIDMiddleware()) //add Logger middleware to router. ensures request context has requestID
 	router.Use(middleware.CORSMiddleware())      //add cors middleware to allow requests from frontend origin
-	api.RegisterRoutes(router)                   //add handlers to router
+	api.RegisterRoutes(router, dbConn)           //add handlers to router
 
 	log.Printf("Starting Petrel on port %s... \n", c.Port)
 	err = router.Run()

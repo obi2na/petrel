@@ -52,20 +52,37 @@ func ValidateStateJWT(stateToken, stateSecret string) error {
 	return nil
 }
 
+type UserInfo struct {
+	Email     string
+	Name      string
+	AvatarURL string
+}
+
 // TODO: Verify ID token signature and claims using Auth0's JWKS
 // 1. Fetch JWKS from https://<your-auth0-domain>/.well-known/jwks.json
 // 2. Match the `kid` in token header to key in JWKS
 // 3. Use key to verify token signature and standard claims (exp, aud, iss)
-func ExtractEmailFromIDToken(idToken string) (string, error) {
+func ExtractUserInfoFromIDToken(idToken string) (UserInfo, error) {
 	token, _, err := new(jwt.Parser).ParseUnverified(idToken, jwt.MapClaims{})
 	if err != nil {
-		return "", fmt.Errorf("parsing id token failed: %w", err)
+		return UserInfo{}, fmt.Errorf("parsing id token failed: %w", err)
 	}
 
 	if claims, ok := token.Claims.(jwt.MapClaims); ok {
-		if email, ok := claims["email"].(string); ok {
-			return email, nil
+		email, _ := claims["email"].(string)
+		name, _ := claims["name"].(string)
+		avatar, _ := claims["picture"].(string)
+
+		if email == "" || name == "" {
+			return UserInfo{}, fmt.Errorf("email or name missing in ID token")
 		}
+
+		return UserInfo{
+			Email:     email,
+			Name:      name,
+			AvatarURL: avatar,
+		}, nil
 	}
-	return "", fmt.Errorf("email not found in ID token")
+
+	return UserInfo{}, fmt.Errorf("invalid token")
 }

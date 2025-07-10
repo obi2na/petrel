@@ -8,6 +8,7 @@ import (
 	"github.com/obi2na/petrel/config"
 	"github.com/obi2na/petrel/internal/logger"
 	"github.com/obi2na/petrel/internal/pkg/jwtutil"
+	"github.com/obi2na/petrel/internal/service/user"
 	"go.uber.org/zap"
 	"io"
 	"net/http"
@@ -20,13 +21,15 @@ type AuthService interface {
 
 type Auth0Service struct {
 	config.Auth0Config
-	HTTPClient *http.Client
+	HTTPClient  *http.Client
+	UserService *userservice.UserService
 }
 
-func NewAuthService(cfg config.Auth0Config, client *http.Client) *Auth0Service {
+func NewAuthService(cfg config.Auth0Config, client *http.Client, us *userservice.UserService) *Auth0Service {
 	return &Auth0Service{
 		Auth0Config: cfg,
 		HTTPClient:  client,
+		UserService: us,
 	}
 }
 
@@ -106,19 +109,24 @@ func (s *Auth0Service) CompleteMagicLink(ctx context.Context, code, state string
 	// 3. extract email from ID token
 	logger.With(ctx).Debug("id_token extracted",
 		zap.String("id_token", tokenResp.IDToken))
-	email, err := jwtutil.ExtractEmailFromIDToken(tokenResp.IDToken)
+	userInfo, err := jwtutil.ExtractUserInfoFromIDToken(tokenResp.IDToken)
 	if err != nil {
 		logger.With(ctx).Error("Failed to parse ID token", zap.Error(err))
 		return "", err
 	}
 
-	logger.With(ctx).Info("email extracted from id_token",
-		zap.String("email", email),
+	// TODO: 4. Lookup or create user in DB
+	user, err := s.UserService.GetOrCreateUser(ctx, userInfo.Email, userInfo.Name, userInfo.AvatarURL)
+	if err != nil {
+		logger.With(ctx).Error("User lookup/creation failed", zap.Error(err))
+		return "", err
+	}
+
+	logger.With(ctx).Info("user authenticated",
+		zap.String("email", user.Email),
 	)
 
-	// TODO: 4. Lookup or create user in DB
-
-	return email, nil
+	return userInfo.Email, nil
 }
 
 func (s *Auth0Service) ExchangeCodeForToken(ctx context.Context, code string) (*TokenResponse, error) {
