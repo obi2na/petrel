@@ -104,6 +104,8 @@ func (s *Auth0Service) CompleteMagicLink(ctx context.Context, code, state string
 	}
 
 	// 3. extract email from ID token
+	logger.With(ctx).Debug("id_token extracted",
+		zap.String("id_token", tokenResp.IDToken))
 	email, err := jwtutil.ExtractEmailFromIDToken(tokenResp.IDToken)
 	if err != nil {
 		logger.With(ctx).Error("Failed to parse ID token", zap.Error(err))

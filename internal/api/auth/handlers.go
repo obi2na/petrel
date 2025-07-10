@@ -74,8 +74,6 @@ func (h *Handler) StartLoginWithMagicLink(c *gin.Context) {
 func (h *Handler) Callback(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	logger.With(ctx).Info("/auth/callback hit")
-
 	code := c.Query("code")
 	state := c.Query("state")
 
@@ -103,7 +101,7 @@ func (h *Handler) BeginLogin(c *gin.Context) {
 	}
 
 	authURL := fmt.Sprintf(
-		"https://%s/authorize?response_type=code&client_id=%s&redirect_uri=%s&scope=openid%%20email&state=%s",
+		"https://%s/authorize?response_type=code&client_id=%s&redirect_uri=%s&scope=openid%%20email%%20profile&state=%s",
 		config.C.Auth0.Domain, config.C.Auth0.ClientID, config.C.Auth0.RedirectURI, state,
 	)
 
