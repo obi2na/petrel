@@ -59,13 +59,20 @@ var (
 )
 
 func LoadConfig(env string) (AppConfig, error) {
+
 	loadOnce.Do(func() {
+		var injector SecretInjector
+
 		// Resolve the effective env name
 		if env == "" {
 			env = os.Getenv("APP_ENV")
 		}
 		if env == "" {
 			env = "local"
+		}
+
+		if env != "local" {
+			injector = &GCPSecretInjector{}
 		}
 
 		// Resolve the config directory
@@ -99,12 +106,13 @@ func LoadConfig(env string) (AppConfig, error) {
 		}
 
 		// 🔒 Load secrets from GCP Secret Manager
-		if env != "local" {
+		if env != "local" && injector != nil {
 			log.Println("🔐 Fetching secrets from Secret Manager...")
-			if err := injectSecretsFromGCP(); err != nil {
+			if err := injector.InjectSecrets(&C); err != nil {
 				loadErr = fmt.Errorf("failed to load secrets: %w", err)
 				return
 			}
+			log.Println("✅ Secrets fetched successfully from Secret Manager")
 		}
 
 		log.Printf("✅ Loaded config for: %s", C.Env)
@@ -113,8 +121,13 @@ func LoadConfig(env string) (AppConfig, error) {
 	return C, loadErr
 }
 
-func injectSecretsFromGCP() error {
+type SecretInjector interface {
+	InjectSecrets(*AppConfig) error
+}
 
+type GCPSecretInjector struct{}
+
+func (g *GCPSecretInjector) InjectSecrets(cfg *AppConfig) error {
 	//create gcp secret manager client
 	log.Println("Loading Secret Manager Client")
 	ctx := context.Background()
@@ -146,15 +159,15 @@ func injectSecretsFromGCP() error {
 
 	// Inject secrets
 	var secrets = map[string]*string{
-		"notion-client-id":    &C.Notion.ClientID,
-		"notion-oauth-secret": &C.Notion.ClientSecret,
-		"notion-state-secret": &C.Notion.StateSecret,
-		"petrel-db-password":  &C.DB.Password,
-		"petrel-db-name":      &C.DB.DBName,
-		"auth0-client-secret": &C.Auth0.ClientSecret,
-		"auth0-domain":        &C.Auth0.Domain,
-		"auth0-client-id":     &C.Auth0.ClientID,
-		"auth0-state-secret":  &C.Auth0.StateSecret,
+		"notion-client-id":    &cfg.Notion.ClientID,
+		"notion-oauth-secret": &cfg.Notion.ClientSecret,
+		"notion-state-secret": &cfg.Notion.StateSecret,
+		"petrel-db-password":  &cfg.DB.Password,
+		"petrel-db-name":      &cfg.DB.DBName,
+		"auth0-client-secret": &cfg.Auth0.ClientSecret,
+		"auth0-domain":        &cfg.Auth0.Domain,
+		"auth0-client-id":     &cfg.Auth0.ClientID,
+		"auth0-state-secret":  &cfg.Auth0.StateSecret,
 	}
 
 	for secretID, target := range secrets {
