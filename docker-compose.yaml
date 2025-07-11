@@ -7,9 +7,9 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: petrel
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: petrel_local
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -23,7 +23,7 @@ services:
       - ./db/migrations:/migrations
     command: [
                "-path", "/migrations",
-               "postgres://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}?sslmode=disable",
+               "-database", "postgres://petrel:password@db:5432/petrel_local?sslmode=disable",
                "up"
     ]
     networks:
