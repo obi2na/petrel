@@ -120,7 +120,7 @@ func injectSecretsFromGCP() error {
 	ctx := context.Background()
 	client, err := secretmanager.NewClient(ctx, option.WithCredentialsFile(os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")))
 	if err != nil {
-		fmt.Errorf("failed to create Secret Manager client: %w", err)
+		return fmt.Errorf("failed to create Secret Manager client: %w", err)
 	}
 	defer client.Close()
 	log.Println("Secret Manager Client loaded successfully")
@@ -154,6 +154,7 @@ func injectSecretsFromGCP() error {
 		"auth0-client-secret": &C.Auth0.ClientSecret,
 		"auth0-domain":        &C.Auth0.Domain,
 		"auth0-client-id":     &C.Auth0.ClientID,
+		"auth0-state-secret":  &C.Auth0.StateSecret,
 	}
 
 	for secretID, target := range secrets {

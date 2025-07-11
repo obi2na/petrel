@@ -21,4 +21,4 @@ auth0:
   client_secret:    "local-client-secret"
   connection:       "email"
   redirect_uri:     "http://localhost:8080/auth/callback"
-  state_secret:     "local-secret" #TODO: Add state_secret to Secret Manager
+  state_secret:     "local-secret"
