@@ -15,6 +15,20 @@ services:
     networks:
       - petrel_net
 
+  migrate:
+    image: migrate/migrate
+    depends_on:
+      - db
+    volumes:
+      - ./db/migrations:/migrations
+    command: [
+               "-path", "/migrations",
+               "postgres://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}?sslmode=disable",
+               "up"
+    ]
+    networks:
+      - petrel_net
+
 volumes:
   postgres_data:
 
