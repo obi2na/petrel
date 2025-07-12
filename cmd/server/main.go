@@ -19,7 +19,7 @@ func main() {
 	flag.Parse()
 
 	_ = godotenv.Load() //load .env if present
-	c, err := config.LoadConfig(env)
+	c, err := config.InitConfig(env)
 	if err != nil {
 		log.Fatalf("Failed to load config : %v", err)
 	}

@@ -58,22 +58,25 @@ var (
 	loadErr  error
 )
 
-func LoadConfig(env string) (AppConfig, error) {
+func InitConfig(env string) (AppConfig, error) {
+	// Resolve the effective env name
+	if env == "" {
+		env = os.Getenv("APP_ENV")
+	}
+	if env == "" {
+		env = "local"
+	}
+
+	if env != "local" && env != "test" {
+		return LoadConfig(env, &GCPSecretInjector{})
+	}
+
+	return LoadConfig(env, nil)
+}
+
+func LoadConfig(env string, injector SecretInjector) (AppConfig, error) {
 
 	loadOnce.Do(func() {
-		var injector SecretInjector
-
-		// Resolve the effective env name
-		if env == "" {
-			env = os.Getenv("APP_ENV")
-		}
-		if env == "" {
-			env = "local"
-		}
-
-		if env != "local" {
-			injector = &GCPSecretInjector{}
-		}
 
 		// Resolve the config directory
 		configDir := os.Getenv("CONFIG_DIR")
@@ -96,8 +99,8 @@ func LoadConfig(env string) (AppConfig, error) {
 		viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 		if err := viper.ReadInConfig(); err != nil {
-			log.Printf("⚠️ Config file not found (%s): %v", env, err)
-			// Not fatal — rely on env vars
+			loadErr = fmt.Errorf("⚠️ Config file not found (%s): %v", env, err)
+			return
 		}
 
 		if err := viper.Unmarshal(&C); err != nil {
