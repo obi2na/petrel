@@ -23,7 +23,7 @@ func RegisterAuthRoutes(r *gin.RouterGroup, dbConn *pgxpool.Pool) {
 	userSvc := userservice.NewUserService(dbConn)
 
 	//create auth service
-	auth0 := authService.NewAuthService(config.C.Auth0, httpClient, userSvc) //nil used as placeholder till we figure where to get dbConn for userService
+	auth0 := authService.NewAuthService(config.C.Auth0, httpClient, userSvc)
 	authHandler := NewHandler(auth0)
 
 	//register routes gotten from authHadler
@@ -48,12 +48,12 @@ func NewHandler(authService authService.AuthService) *Handler {
 // TODO: complete this when ready to setup frontend
 func (h *Handler) StartLoginWithMagicLink(c *gin.Context) {
 	ctx := c.Request.Context()
-	var req MagicLinkRequest
+	var reqBody MagicLinkRequest
 	// 	c.ShouldBindJson tells gin to
 	// 	1.	Read the request body (usually JSON sent via POST or PUT).
 	//	2.	Parse (unmarshal) the JSON into the req struct.
 	//	3.	Return an error if the JSON is malformed or missing required fields.
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindJSON(&reqBody); err != nil {
 		logger.With(ctx).Error("Failed to bind json", zap.Error(err))
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Invalid email",
@@ -62,11 +62,11 @@ func (h *Handler) StartLoginWithMagicLink(c *gin.Context) {
 	}
 
 	logger.With(ctx).Info("email extracted from /login response body",
-		zap.String("email", req.Email),
+		zap.String("email", reqBody.Email),
 	)
 
 	// initiates a magic-link flow using Auth0
-	if err := h.AuthService.SendMagicLink(ctx, req.Email); err != nil {
+	if err := h.AuthService.SendMagicLink(ctx, reqBody.Email); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Failed to send magic link",
 		})

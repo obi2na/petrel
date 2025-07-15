@@ -5,24 +5,30 @@ import (
 	"github.com/obi2na/petrel/config"
 	"go.uber.org/zap"
 	"log"
+	"sync"
 )
 
 var baseLogger *zap.Logger
 
 const requestIDKey string = "request_id"
 
+var loadOnce sync.Once
+
 func Init() {
-	var err error
-	if config.C.Env != "prod" {
-		cfg := zap.NewProductionConfig()
-		cfg.Level = zap.NewAtomicLevelAt(zap.DebugLevel)
-		baseLogger, err = cfg.Build()
-	} else {
-		baseLogger, err = zap.NewProduction()
-	}
-	if err != nil {
-		panic("cannot initialize Zap logger: " + err.Error())
-	}
+	loadOnce.Do(func() {
+		var err error
+		if config.C.Env != "prod" {
+			cfg := zap.NewProductionConfig()
+			cfg.Level = zap.NewAtomicLevelAt(zap.DebugLevel)
+			baseLogger, err = cfg.Build()
+		} else {
+			baseLogger, err = zap.NewProduction()
+		}
+		if err != nil {
+			panic("cannot initialize Zap logger: " + err.Error())
+		}
+	})
+
 }
 
 // returns a logger with request_id context if available
