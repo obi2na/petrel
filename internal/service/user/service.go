@@ -11,6 +11,10 @@ import (
 	"go.uber.org/zap"
 )
 
+type Service interface {
+	GetOrCreateUser(ctx context.Context, email, name, avatarURL string) (*models.User, error)
+}
+
 type UserService struct {
 	queries *models.Queries
 }

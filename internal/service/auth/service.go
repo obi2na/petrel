@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"github.com/obi2na/petrel/config"
 	"github.com/obi2na/petrel/internal/logger"
-	"github.com/obi2na/petrel/internal/pkg/jwtutil"
+	"github.com/obi2na/petrel/internal/pkg"
 	"github.com/obi2na/petrel/internal/service/user"
 	"go.uber.org/zap"
 	"io"
@@ -21,22 +21,24 @@ type AuthService interface {
 
 type Auth0Service struct {
 	config.Auth0Config
-	HTTPClient  *http.Client
-	UserService *userservice.UserService
+	HTTPClient  utils.HTTPClient
+	UserService userservice.Service
+	JwtProvider utils.JWTManager
 }
 
-func NewAuthService(cfg config.Auth0Config, client *http.Client, us *userservice.UserService) *Auth0Service {
+func NewAuthService(cfg config.Auth0Config, client utils.HTTPClient, us userservice.Service) *Auth0Service {
 	return &Auth0Service{
 		Auth0Config: cfg,
 		HTTPClient:  client,
 		UserService: us,
+		JwtProvider: utils.NewJWTProvider(),
 	}
 }
 
 func (s *Auth0Service) SendMagicLink(ctx context.Context, email string) error {
 
 	//generate state JWT
-	state, err := jwtutil.GenerateStateJWT(config.C.Auth0.StateSecret)
+	state, err := s.JwtProvider.GenerateStateJWT(config.C.Auth0.StateSecret)
 	if err != nil {
 		logger.With(ctx).Error("Failed to generate state", zap.Error(err))
 		return fmt.Errorf("internal error")
@@ -94,7 +96,7 @@ func (s *Auth0Service) CompleteMagicLink(ctx context.Context, code, state string
 	}
 
 	// 1. validate state
-	if err := jwtutil.ValidateStateJWT(state, config.C.Auth0.StateSecret); err != nil {
+	if err := s.JwtProvider.ValidateStateJWT(state, config.C.Auth0.StateSecret); err != nil {
 		logger.With(ctx).Error("Invalid state token", zap.Error(err))
 		return "", err
 	}
@@ -109,7 +111,7 @@ func (s *Auth0Service) CompleteMagicLink(ctx context.Context, code, state string
 	// 3. extract email from ID token
 	logger.With(ctx).Debug("id_token extracted",
 		zap.String("id_token", tokenResp.IDToken))
-	userInfo, err := jwtutil.ExtractUserInfoFromIDToken(tokenResp.IDToken)
+	userInfo, err := s.JwtProvider.ExtractUserInfoFromIDToken(tokenResp.IDToken)
 	if err != nil {
 		logger.With(ctx).Error("Failed to parse ID token", zap.Error(err))
 		return "", err

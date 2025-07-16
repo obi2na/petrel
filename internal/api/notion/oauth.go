@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/obi2na/petrel/config"
+	"github.com/obi2na/petrel/internal/pkg"
 	"io"
 	"net/http"
 	"net/url"
@@ -62,15 +63,10 @@ type Person struct {
 	Email string `json:"email"`
 }
 
-// Interface to allow mocking of http.Client used for ExchangeCodeForToken
-type HTTPClient interface {
-	Do(req *http.Request) (*http.Response, error)
-}
-
 // ExchangeCodeForToken exchanges the authorization code for an access token
 // by making a POST request to Notion's OAuth token endpoint.
 // It returns a parsed TokenResponse or an error if the exchange fails
-func ExchangeCodeForToken(code string, client HTTPClient) (*TokenResponse, error) {
+func ExchangeCodeForToken(code string, client utils.HTTPClient) (*TokenResponse, error) {
 	data := url.Values{}
 	data.Set("grant_type", "authorization_code")
 	data.Set("code", code)

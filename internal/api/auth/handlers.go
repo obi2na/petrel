@@ -6,9 +6,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/obi2na/petrel/config"
 	"github.com/obi2na/petrel/internal/logger"
-	"github.com/obi2na/petrel/internal/pkg/jwtutil"
+	"github.com/obi2na/petrel/internal/pkg"
 	"github.com/obi2na/petrel/internal/service/auth"
-	userservice "github.com/obi2na/petrel/internal/service/user"
+	"github.com/obi2na/petrel/internal/service/user"
 	"go.uber.org/zap"
 	"net/http"
 	"time"
@@ -100,7 +100,7 @@ func (h *Handler) Callback(c *gin.Context) {
 
 // using this to confirm backend login flow works
 func (h *Handler) BeginLogin(c *gin.Context) {
-	state, err := jwtutil.GenerateStateJWT(config.C.Auth0.StateSecret)
+	state, err := utils.GenerateStateJWT(config.C.Auth0.StateSecret)
 	if err != nil {
 		logger.With(c.Request.Context()).Error("Failed to generate state token", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})

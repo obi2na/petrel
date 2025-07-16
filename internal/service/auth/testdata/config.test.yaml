@@ -1,0 +1,8 @@
+env:    "test"
+auth0:
+  domain:           "auth0-domain-id"
+  client_id:        "test-client-id"
+  client_secret:    "test-client-secret"
+  connection:       "email"
+  redirect_uri:     "http://localhost:3000/auth/callback"
+  state_secret:     "test-secret"
