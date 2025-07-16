@@ -16,7 +16,7 @@ type Service interface {
 }
 
 type UserService struct {
-	queries *models.Queries
+	queries models.Querier
 }
 
 func NewUserService(db *pgxpool.Pool) *UserService {
@@ -61,6 +61,7 @@ func (s *UserService) GetOrCreateUser(ctx context.Context, email, name, avatarUR
 	// user retrieval successful. update last_login_at
 	if err := s.queries.UpdateLastLogin(ctx, user.ID); err != nil {
 		logger.With(ctx).Error("UpdateLastLogin query failed", zap.Error(err))
+		return nil, err
 	}
 	return &user, nil
 
