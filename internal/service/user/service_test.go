@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/google/go-cmp/cmp"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/obi2na/petrel/internal/db/models"
@@ -137,6 +138,10 @@ func TestGetOrCreateUser(t *testing.T) {
 			}
 			assert.NoError(t, err)
 			fmt.Println(result)
+			//compare expected result to result
+			if diff := cmp.Diff(result, &tc.GetUserByEmailReturnUser); diff != "" {
+				t.Errorf("unexpected config diff (-want +got):\n%s", diff)
+			}
 		})
 	}
 
