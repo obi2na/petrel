@@ -14,9 +14,14 @@ import (
 	"net/http"
 )
 
+type LoginResult struct {
+	Email string
+	Token string
+}
+
 type AuthService interface {
 	SendMagicLink(ctx context.Context, email string) error
-	CompleteMagicLink(ctx context.Context, code, state string) (string, error)
+	CompleteMagicLink(ctx context.Context, code, state string) (LoginResult, error)
 }
 
 type Auth0Service struct {
@@ -89,23 +94,23 @@ func (s *Auth0Service) SendMagicLink(ctx context.Context, email string) error {
 	return nil
 }
 
-func (s *Auth0Service) CompleteMagicLink(ctx context.Context, code, state string) (string, error) {
+func (s *Auth0Service) CompleteMagicLink(ctx context.Context, code, state string) (LoginResult, error) {
 	if code == "" || state == "" {
 		logger.With(ctx).Error("Missing code or state in callback")
-		return "", fmt.Errorf("Missing code or state in callback")
+		return LoginResult{}, fmt.Errorf("Missing code or state in callback")
 	}
 
 	// 1. validate state
 	if err := s.JwtProvider.ValidateStateJWT(state, config.C.Auth0.StateSecret); err != nil {
 		logger.With(ctx).Error("Invalid state token", zap.Error(err))
-		return "", err
+		return LoginResult{}, err
 	}
 
 	// 2. Exchange code for tokens via Auth0
 	tokenResp, err := s.ExchangeCodeForToken(ctx, code)
 	if err != nil {
 		logger.With(ctx).Error("Failed to exchange code for token", zap.Error(err))
-		return "", err
+		return LoginResult{}, err
 	}
 
 	// 3. extract email from ID token
@@ -114,21 +119,27 @@ func (s *Auth0Service) CompleteMagicLink(ctx context.Context, code, state string
 	userInfo, err := s.JwtProvider.ExtractUserInfoFromIDToken(tokenResp.IDToken)
 	if err != nil {
 		logger.With(ctx).Error("Failed to parse ID token", zap.Error(err))
-		return "", err
+		return LoginResult{}, err
 	}
 
-	// TODO: 4. Lookup or create user in DB
+	// 4. Lookup or create user in DB
 	user, err := s.UserService.GetOrCreateUser(ctx, userInfo.Email, userInfo.Name, userInfo.AvatarURL)
 	if err != nil {
 		logger.With(ctx).Error("User lookup/creation failed", zap.Error(err))
-		return "", err
+		return LoginResult{}, err
+	}
+
+	token, err := s.JwtProvider.GeneratePetrelJWT(user.ID.String(), user.Email, config.C.Auth0.PetrelJWTSecret)
+	if err != nil {
+		logger.With(ctx).Error("Bearer token creation failed", zap.Error(err))
+		return LoginResult{}, err
 	}
 
 	logger.With(ctx).Info("user authenticated",
 		zap.String("email", user.Email),
 	)
 
-	return userInfo.Email, nil
+	return LoginResult{Email: userInfo.Email, Token: token}, nil
 }
 
 func (s *Auth0Service) ExchangeCodeForToken(ctx context.Context, code string) (*TokenResponse, error) {

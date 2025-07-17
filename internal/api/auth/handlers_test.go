@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/obi2na/petrel/config"
 	"github.com/obi2na/petrel/internal/logger"
+	"github.com/obi2na/petrel/internal/service/auth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"net/http"
@@ -24,10 +24,9 @@ func (m *MockAuthService) SendMagicLink(ctx context.Context, email string) error
 	return args.Error(0)
 }
 
-func (m *MockAuthService) CompleteMagicLink(ctx context.Context, code, state string) (string, error) {
+func (m *MockAuthService) CompleteMagicLink(ctx context.Context, code, state string) (authService.LoginResult, error) {
 	args := m.Called(ctx, code, state)
-	fmt.Println("mock used")
-	return args.String(0), args.Error(1)
+	return args.Get(0).(authService.LoginResult), args.Error(1)
 }
 
 func TestStartLoginWithMagicLink(t *testing.T) {
@@ -160,9 +159,9 @@ func TestCallback(t *testing.T) {
 			mockAuthService.Calls = nil
 
 			if tc.failMockService {
-				mockAuthService.On("CompleteMagicLink", mock.Anything, "", "").Return("", errors.New("CompleteMagicLink failed"))
+				mockAuthService.On("CompleteMagicLink", mock.Anything, "", "").Return(authService.LoginResult{}, errors.New("CompleteMagicLink failed"))
 			} else {
-				mockAuthService.On("CompleteMagicLink", mock.Anything, "", "").Return("user@example.com", nil)
+				mockAuthService.On("CompleteMagicLink", mock.Anything, "", "").Return(authService.LoginResult{"user@example.com", "some-token"}, nil)
 			}
 
 			//setup request

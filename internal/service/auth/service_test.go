@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/uuid"
 	"github.com/obi2na/petrel/config"
 	"github.com/obi2na/petrel/internal/db/models"
 	"github.com/obi2na/petrel/internal/logger"
@@ -53,6 +54,11 @@ func (m *MockJWTManager) ValidateStateJWT(state, secret string) error {
 func (m *MockJWTManager) ExtractUserInfoFromIDToken(token string) (utils.UserInfo, error) {
 	args := m.Called(token)
 	return args.Get(0).(utils.UserInfo), args.Error(1)
+}
+
+func (m *MockJWTManager) GeneratePetrelJWT(userID, email, secret string) (string, error) {
+	args := m.Called(userID, email, secret)
+	return args.String(0), args.Error(1)
 }
 
 // --- TESTs ----
@@ -256,8 +262,8 @@ func TestCompleteMagicLink(t *testing.T) {
 		Name:      "John Doe",
 		AvatarURL: "https://example.com/avatar.png",
 	}
-
 	mockUser := &models.User{
+		ID:    uuid.MustParse("f8a2f92f-1354-45b8-a1e3-0387b02d11b0"),
 		Email: mockUserInfo.Email,
 		Name:  mockUserInfo.Name,
 	}
@@ -270,6 +276,7 @@ func TestCompleteMagicLink(t *testing.T) {
 		exchangeErr     error
 		userInfoErr     error
 		userServiceErr  error
+		jwtGenErr       error
 		expectError     bool
 		expectedErrText string
 	}{
@@ -318,11 +325,19 @@ func TestCompleteMagicLink(t *testing.T) {
 			expectError:     true,
 			expectedErrText: "db error",
 		},
+		{
+			name:            "jwt generation fails",
+			code:            "code",
+			state:           "state",
+			jwtGenErr:       fmt.Errorf("signing error"),
+			expectError:     true,
+			expectedErrText: "signing error",
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			// reset mocks
+			// Reset mocks
 			mockJWT.ExpectedCalls = nil
 			mockJWT.Calls = nil
 			mockHTTP.ExpectedCalls = nil
@@ -337,7 +352,7 @@ func TestCompleteMagicLink(t *testing.T) {
 				UserService: mockUserService,
 			}
 
-			// If either code or state is empty, test will short-circuit and not call downstream methods.
+			// Short-circuit: missing code or state
 			if tc.code == "" || tc.state == "" {
 				_, err := authService.CompleteMagicLink(context.Background(), tc.code, tc.state)
 				assert.Error(t, err)
@@ -368,7 +383,7 @@ func TestCompleteMagicLink(t *testing.T) {
 				return
 			}
 
-			// Mock JWT extract user
+			// Mock ExtractUserInfoFromIDToken
 			mockJWT.On("ExtractUserInfoFromIDToken", "mock-id-token").Return(mockUserInfo, tc.userInfoErr)
 
 			if tc.userInfoErr != nil {
@@ -378,7 +393,7 @@ func TestCompleteMagicLink(t *testing.T) {
 				return
 			}
 
-			// Mock user service
+			// Mock GetOrCreateUser
 			mockUserService.On("GetOrCreateUser", mock.Anything, mockUserInfo.Email, mockUserInfo.Name, mockUserInfo.AvatarURL).
 				Return(mockUser, tc.userServiceErr)
 
@@ -389,10 +404,22 @@ func TestCompleteMagicLink(t *testing.T) {
 				return
 			}
 
-			// SUCCESS CASE
-			email, err := authService.CompleteMagicLink(context.Background(), tc.code, tc.state)
+			// Mock GeneratePetrelJWT
+			mockJWT.On("GeneratePetrelJWT", mockUser.ID.String(), mockUser.Email, config.C.Auth0.PetrelJWTSecret).
+				Return("mock-petrel-jwt-token", tc.jwtGenErr)
+
+			if tc.jwtGenErr != nil {
+				_, err := authService.CompleteMagicLink(context.Background(), tc.code, tc.state)
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), tc.expectedErrText)
+				return
+			}
+
+			// SUCCESS
+			loginResult, err := authService.CompleteMagicLink(context.Background(), tc.code, tc.state)
 			assert.NoError(t, err)
-			assert.Equal(t, mockUser.Email, email)
+			assert.Equal(t, mockUser.Email, loginResult.Email)
+			assert.Equal(t, "mock-petrel-jwt-token", loginResult.Token)
 
 			mockJWT.AssertExpectations(t)
 			mockHTTP.AssertExpectations(t)

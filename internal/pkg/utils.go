@@ -16,6 +16,7 @@ type JWTManager interface {
 	GenerateStateJWT(stateSecret string) (string, error)
 	ValidateStateJWT(stateToken, stateSecret string) error
 	ExtractUserInfoFromIDToken(idToken string) (UserInfo, error)
+	GeneratePetrelJWT(userID, email, secret string) (string, error)
 }
 
 type JWTProvider struct{}
@@ -97,6 +98,20 @@ func (j *JWTProvider) ExtractUserInfoFromIDToken(idToken string) (UserInfo, erro
 	}
 
 	return UserInfo{}, fmt.Errorf("invalid token")
+}
+
+func (j *JWTProvider) GeneratePetrelJWT(userID, email, secret string) (string, error) {
+	claims := jwt.MapClaims{
+		"sub":   userID, // principal user the token is about
+		"iss":   "petrel",
+		"aud":   "petrel-client",                       // use later during
+		"exp":   time.Now().Add(24 * time.Hour).Unix(), // expires in 24 hours
+		"iat":   time.Now().Unix(),
+		"email": email,
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(secret))
 }
 
 // GenerateStateJWT creates a signed JWT token to be used as the `state` parameter

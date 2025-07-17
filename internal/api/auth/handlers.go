@@ -84,7 +84,7 @@ func (h *Handler) Callback(c *gin.Context) {
 	code := c.Query("code")
 	state := c.Query("state")
 
-	email, err := h.AuthService.CompleteMagicLink(ctx, code, state)
+	loginResult, err := h.AuthService.CompleteMagicLink(ctx, code, state)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"error": "Authentication Failed",
@@ -93,8 +93,9 @@ func (h *Handler) Callback(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"message": "Token exchange successful",
-		"email":   email,
+		"message":      "Token exchange successful",
+		"email":        loginResult.Email,
+		"bearer_token": loginResult.Token,
 	})
 }
 
