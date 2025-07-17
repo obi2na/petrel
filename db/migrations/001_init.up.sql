@@ -1,5 +1,7 @@
+CREATE EXTENSION IF NOT EXISTS "pgcrypto"; -- only once per DB
+
 CREATE TABLE users (
-    id UUID PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
     avatar_url TEXT,
@@ -11,7 +13,7 @@ CREATE TABLE users (
 );
 
 CREATE TABLE integrations (
-    id UUID PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id),
     service TEXT NOT NULL, -- e.g 'notion', 'confluence'
     access_token TEXT NOT NULL,
@@ -22,7 +24,7 @@ CREATE TABLE integrations (
 );
 
 CREATE TABLE notion_integrations (
-    id UUID PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     integration_id UUID NOT NULL REFERENCES integrations(id) ON DELETE CASCADE,
     workspace_id TEXT NOT NULL,
     workspace_name TEXT,

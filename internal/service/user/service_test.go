@@ -122,7 +122,7 @@ func TestGetOrCreateUser(t *testing.T) {
 			mockQueries.Calls = nil
 
 			mockQueries.On("GetUserByEmail", mock.Anything, tc.userEmail).Return(tc.GetUserByEmailReturnUser, tc.GetUserByEmailReturnErr)
-			mockQueries.On("CreateUser", mock.Anything, tc.CreateUserMockParams).Return(tc.CreateUserReturnUser, tc.CreateUserReturnErr)
+			mockQueries.On("CreateUser", mock.Anything, mock.Anything).Return(tc.CreateUserReturnUser, tc.CreateUserReturnErr)
 			mockQueries.On("UpdateLastLogin", mock.Anything, tc.userId).Return(tc.UpdateLastLoginReturnErr)
 
 			//plug mock into userService

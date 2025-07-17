@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/obi2na/petrel/internal/db/models"
@@ -36,6 +37,7 @@ func (s *UserService) GetOrCreateUser(ctx context.Context, email, name, avatarUR
 			)
 			// create new user
 			newUserParams := models.CreateUserParams{
+				ID:        uuid.New(),
 				Email:     email,
 				Name:      name,
 				AvatarUrl: pgtype.Text{String: avatarURL, Valid: avatarURL != ""},
@@ -63,6 +65,7 @@ func (s *UserService) GetOrCreateUser(ctx context.Context, email, name, avatarUR
 		logger.With(ctx).Error("UpdateLastLogin query failed", zap.Error(err))
 		return nil, err
 	}
+	logger.With(ctx).Info(user.ID.String())
 	return &user, nil
 
 }
