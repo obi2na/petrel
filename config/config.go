@@ -19,12 +19,13 @@ type CORSConfig struct {
 }
 
 type Auth0Config struct {
-	Domain       string `mapstructure:"domain"`
-	ClientID     string `mapstructure:"client_id"`
-	ClientSecret string `mapstructure:"client_secret"`
-	Connection   string `mapstructure:"connection"`
-	RedirectURI  string `mapstructure:"redirect_uri"`
-	StateSecret  string `mapstructure:"state_secret"`
+	Domain          string `mapstructure:"domain"`
+	ClientID        string `mapstructure:"client_id"`
+	ClientSecret    string `mapstructure:"client_secret"`
+	Connection      string `mapstructure:"connection"`
+	RedirectURI     string `mapstructure:"redirect_uri"`
+	StateSecret     string `mapstructure:"state_secret"`
+	PetrelJWTSecret string `mapstructure:"petrel_jwt_secret"`
 }
 
 type DBConfig struct {
@@ -162,15 +163,16 @@ func (g *GCPSecretInjector) InjectSecrets(cfg *AppConfig) error {
 
 	// Inject secrets
 	var secrets = map[string]*string{
-		"notion-client-id":    &cfg.Notion.ClientID,
-		"notion-oauth-secret": &cfg.Notion.ClientSecret,
-		"notion-state-secret": &cfg.Notion.StateSecret,
-		"petrel-db-password":  &cfg.DB.Password,
-		"petrel-db-name":      &cfg.DB.DBName,
-		"auth0-client-secret": &cfg.Auth0.ClientSecret,
-		"auth0-domain":        &cfg.Auth0.Domain,
-		"auth0-client-id":     &cfg.Auth0.ClientID,
-		"auth0-state-secret":  &cfg.Auth0.StateSecret,
+		"notion-client-id":        &cfg.Notion.ClientID,
+		"notion-oauth-secret":     &cfg.Notion.ClientSecret,
+		"notion-state-secret":     &cfg.Notion.StateSecret,
+		"petrel-db-password":      &cfg.DB.Password,
+		"petrel-db-name":          &cfg.DB.DBName,
+		"auth0-client-secret":     &cfg.Auth0.ClientSecret,
+		"auth0-domain":            &cfg.Auth0.Domain,
+		"auth0-client-id":         &cfg.Auth0.ClientID,
+		"auth0-state-secret":      &cfg.Auth0.StateSecret,
+		"auth0-petrel-jwt-secret": &cfg.Auth0.PetrelJWTSecret, //TODO: add to secrets manager
 	}
 
 	for secretID, target := range secrets {
