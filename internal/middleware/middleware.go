@@ -1,11 +1,15 @@
 package middleware
 
 import (
+	"encoding/json"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/obi2na/petrel/config"
 	"github.com/obi2na/petrel/internal/logger"
+	"net/http"
+	"strings"
 	"time"
 )
 
@@ -37,4 +41,62 @@ func CORSMiddleware() gin.HandlerFunc {
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	})
+}
+
+func AuthMiddleware(secret string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		authHeader := c.GetHeader("Authorization")
+		if !strings.HasPrefix(authHeader, "Bearer ") {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing or invalid token"})
+			return
+		}
+		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+
+		// Parse and validate token
+		claims := jwt.MapClaims{}
+		token, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (interface{}, error) {
+			return []byte(secret), nil
+		})
+
+		if err != nil || !token.Valid {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			return
+		}
+
+		// Manually check expiration
+		if expRaw, ok := claims["exp"]; ok {
+			switch exp := expRaw.(type) {
+			case float64:
+				if int64(exp) < time.Now().Unix() {
+					c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token expired"})
+					return
+				}
+			case json.Number: // If using json.Unmarshal
+				expInt, err := exp.Int64()
+				if err != nil || expInt < time.Now().Unix() {
+					c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token expired"})
+					return
+				}
+			default:
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid exp format"})
+				return
+			}
+		} else {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "exp not found in token"})
+			return
+		}
+
+		// Extract user ID
+		sub, ok := claims["sub"].(string)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid subject"})
+			return
+		}
+
+		//TODO: use sub to validate user
+
+		// Add to context
+		c.Set("user_id", sub)
+		c.Next()
+	}
 }
