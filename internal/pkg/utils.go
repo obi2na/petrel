@@ -1,9 +1,12 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
+	"github.com/dgraph-io/ristretto"
 	"github.com/golang-jwt/jwt/v5"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -165,3 +168,69 @@ type UserInfo struct {
 	Name      string
 	AvatarURL string
 }
+
+// ------ Cache Implementation ----------
+
+type Cache interface {
+	Set(key string, value interface{}, ttl int64) bool
+	Get(key string) (interface{}, bool)
+	Del(key string)
+}
+
+type RistrettoCache struct {
+	store *ristretto.Cache
+}
+
+func NewRistrettoCache() (Cache, error) {
+	store, err := ristretto.NewCache(&ristretto.Config{
+		NumCounters: 1e7,     // for hight performance
+		MaxCost:     1 << 30, // 1 GB
+		BufferItems: 64,      //recommended default
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return &RistrettoCache{
+		store,
+	}, nil
+}
+
+func (r *RistrettoCache) Set(key string, value interface{}, ttl int64) bool {
+	return r.store.SetWithTTL(key, value, 1, time.Duration(ttl)*time.Second)
+}
+
+func (r *RistrettoCache) Get(key string) (interface{}, bool) {
+	return r.store.Get(key)
+}
+
+func (r *RistrettoCache) Del(key string) {
+	r.store.Del(key)
+}
+
+var (
+	cache     Cache
+	cacheErr  error
+	cacheOnce sync.Once
+)
+
+func InitCache(env string) error {
+	cacheOnce.Do(func() {
+		switch env {
+		case "local", "dev", "test":
+			cache, cacheErr = NewRistrettoCache()
+			return
+		default:
+			str := fmt.Sprintf("unsupported env: %s", env)
+			cacheErr = errors.New(str)
+			return
+		}
+	})
+	return cacheErr
+}
+
+func GetCache() (Cache, error) {
+	return cache, cacheErr
+}
+
+// ------ Cache Implementation ends----------

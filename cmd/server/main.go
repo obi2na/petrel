@@ -9,6 +9,7 @@ import (
 	"github.com/obi2na/petrel/internal/db"
 	"github.com/obi2na/petrel/internal/logger"
 	"github.com/obi2na/petrel/internal/middleware"
+	utils "github.com/obi2na/petrel/internal/pkg"
 
 	"log"
 )
@@ -24,6 +25,15 @@ func main() {
 		log.Fatalf("Failed to load config : %v", err)
 	}
 
+	//initialize singleton logger for application
+	logger.Init()
+
+	//initialize singleton cache
+	err = utils.InitCache(c.Env)
+	if err != nil {
+		log.Fatalf("Failed to load cache : %v", err)
+	}
+
 	//connect to DB
 	dbConn, err := db.Connect()
 	if err != nil {
@@ -31,8 +41,6 @@ func main() {
 	}
 	defer dbConn.Close()
 	log.Println("DB connection successful")
-
-	logger.Init() //initialize singleton logger for application
 
 	router := gin.Default()
 	router.Use(middleware.RequestIDMiddleware()) //add Logger middleware to router. ensures request context has requestID
