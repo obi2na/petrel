@@ -33,6 +33,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load cache : %v", err)
 	}
+	log.Println("✅ Cache initialization successful")
 
 	//connect to DB
 	dbConn, err := db.Connect()
