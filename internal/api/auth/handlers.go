@@ -3,12 +3,10 @@ package auth
 import (
 	"fmt"
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/obi2na/petrel/config"
 	"github.com/obi2na/petrel/internal/logger"
 	"github.com/obi2na/petrel/internal/pkg"
 	"github.com/obi2na/petrel/internal/service/auth"
-	"github.com/obi2na/petrel/internal/service/user"
 	"go.uber.org/zap"
 	"net/http"
 	"time"
@@ -18,13 +16,10 @@ var httpClient = &http.Client{
 	Timeout: 10 * time.Second,
 }
 
-func RegisterAuthRoutes(r *gin.RouterGroup, dbConn *pgxpool.Pool) {
-	//create user Service
-	userSvc := userservice.NewUserService(dbConn)
+func RegisterAuthRoutes(r *gin.RouterGroup, authSvc authService.AuthService) {
 
-	//create auth service
-	auth0 := authService.NewAuthService(config.C.Auth0, httpClient, userSvc)
-	authHandler := NewHandler(auth0)
+	//create auth handler
+	authHandler := NewHandler(authSvc)
 
 	//register routes gotten from authHadler
 	r.GET("/login", authHandler.BeginLogin)

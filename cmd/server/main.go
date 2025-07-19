@@ -10,6 +10,7 @@ import (
 	"github.com/obi2na/petrel/internal/logger"
 	"github.com/obi2na/petrel/internal/middleware"
 	utils "github.com/obi2na/petrel/internal/pkg"
+	"github.com/obi2na/petrel/internal/service/bootstrap"
 
 	"log"
 )
@@ -34,6 +35,7 @@ func main() {
 		log.Fatalf("Failed to load cache : %v", err)
 	}
 	log.Println("✅ Cache initialization successful")
+	cache, _ := utils.GetCache()
 
 	//connect to DB
 	dbConn, err := db.Connect()
@@ -43,10 +45,13 @@ func main() {
 	defer dbConn.Close()
 	log.Println("DB connection successful")
 
+	// Init Services
+	services := bootstrap.NewServiceContainer(dbConn, cache)
+
 	router := gin.Default()
 	router.Use(middleware.RequestIDMiddleware()) //add Logger middleware to router. ensures request context has requestID
 	router.Use(middleware.CORSMiddleware())      //add cors middleware to allow requests from frontend origin
-	api.RegisterRoutes(router, dbConn)           //add handlers to router
+	api.RegisterRoutes(router, services)         //add handlers to router
 
 	log.Printf("Starting Petrel on port %s... \n", c.Port)
 	err = router.Run()

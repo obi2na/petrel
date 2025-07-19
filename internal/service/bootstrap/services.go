@@ -1,0 +1,30 @@
+package bootstrap
+
+import (
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/obi2na/petrel/config"
+	"github.com/obi2na/petrel/internal/pkg"
+	"github.com/obi2na/petrel/internal/service/auth"
+	"github.com/obi2na/petrel/internal/service/user"
+	"net/http"
+	"time"
+)
+
+type ServiceContainer struct {
+	UserSvc userservice.Service
+	AuthSvc authService.AuthService
+}
+
+func NewServiceContainer(db *pgxpool.Pool, cache utils.Cache) *ServiceContainer {
+	httpClient := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	userSvc := userservice.NewUserService(db, cache)
+	authSvc := authService.NewAuthService(config.C.Auth0, httpClient, userSvc)
+
+	return &ServiceContainer{
+		UserSvc: userSvc,
+		AuthSvc: authSvc,
+	}
+}

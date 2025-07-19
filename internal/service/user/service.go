@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/obi2na/petrel/internal/db/models"
 	"github.com/obi2na/petrel/internal/logger"
+	utils "github.com/obi2na/petrel/internal/pkg"
 	"go.uber.org/zap"
 )
 
@@ -18,11 +19,13 @@ type Service interface {
 
 type UserService struct {
 	queries models.Querier
+	cache   utils.Cache
 }
 
-func NewUserService(db *pgxpool.Pool) *UserService {
+func NewUserService(db *pgxpool.Pool, cache utils.Cache) *UserService {
 	return &UserService{
 		queries: models.New(db),
+		cache:   cache,
 	}
 }
 
@@ -31,6 +34,7 @@ func (s *UserService) GetOrCreateUser(ctx context.Context, email, name, avatarUR
 
 	if err != nil {
 		// user does not exist in table. no rows found
+
 		if errors.Is(err, sql.ErrNoRows) {
 			logger.With(ctx).Info("user does not exist. creating new user",
 				zap.String("email", email),

@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/obi2na/petrel/config"
 	"github.com/obi2na/petrel/internal/logger"
+	userservice "github.com/obi2na/petrel/internal/service/user"
 	"net/http"
 	"strings"
 	"time"
@@ -43,7 +44,7 @@ func CORSMiddleware() gin.HandlerFunc {
 	})
 }
 
-func AuthMiddleware(secret string) gin.HandlerFunc {
+func AuthMiddleware(secret string, userSvc userservice.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if !strings.HasPrefix(authHeader, "Bearer ") {
