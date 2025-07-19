@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/dgraph-io/ristretto"
@@ -20,6 +21,7 @@ type JWTManager interface {
 	ValidateStateJWT(stateToken, stateSecret string) error
 	ExtractUserInfoFromIDToken(idToken string) (UserInfo, error)
 	GeneratePetrelJWT(userID, email, secret string) (string, error)
+	ParseTokenAndExtractSub(tokenString, secret string) (string, error)
 }
 
 type JWTProvider struct{}
@@ -115,6 +117,44 @@ func (j *JWTProvider) GeneratePetrelJWT(userID, email, secret string) (string, e
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(secret))
+}
+
+func (j *JWTProvider) ParseTokenAndExtractSub(tokenString, secret string) (string, error) {
+	claims := jwt.MapClaims{}
+	token, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (interface{}, error) {
+		return []byte(secret), nil
+	})
+
+	if err != nil || !token.Valid {
+		return "", errors.New("invalid token")
+	}
+
+	// Manually check expiration
+	if expRaw, ok := claims["exp"]; ok {
+		switch exp := expRaw.(type) {
+		case float64:
+			if int64(exp) < time.Now().Unix() {
+				return "", errors.New("token expired")
+			}
+		case json.Number: // If using json.Unmarshal
+			expInt, err := exp.Int64()
+			if err != nil || expInt < time.Now().Unix() {
+				return "", errors.New("token expired")
+			}
+		default:
+			return "", errors.New("invalid exp format")
+		}
+	} else {
+		return "", errors.New("exp not found in token")
+	}
+
+	// Extract user ID
+	sub, ok := claims["sub"].(string)
+	if !ok {
+		return "", errors.New("invalid subject")
+	}
+
+	return sub, nil
 }
 
 // GenerateStateJWT creates a signed JWT token to be used as the `state` parameter

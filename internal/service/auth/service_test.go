@@ -66,6 +66,11 @@ func (m *MockJWTManager) GeneratePetrelJWT(userID, email, secret string) (string
 	return args.String(0), args.Error(1)
 }
 
+func (m *MockJWTManager) ParseTokenAndExtractSub(tokenString string, secret string) (string, error) {
+	args := m.Called(tokenString, secret)
+	return args.String(0), args.Error(1)
+}
+
 // --- TESTs ----
 
 func TestSendMagicLink(t *testing.T) {

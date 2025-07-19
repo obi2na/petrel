@@ -1,14 +1,14 @@
 package middleware
 
 import (
-	"encoding/json"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/obi2na/petrel/config"
 	"github.com/obi2na/petrel/internal/logger"
+	utils "github.com/obi2na/petrel/internal/pkg"
 	userservice "github.com/obi2na/petrel/internal/service/user"
+	"go.uber.org/zap"
 	"net/http"
 	"strings"
 	"time"
@@ -44,53 +44,27 @@ func CORSMiddleware() gin.HandlerFunc {
 	})
 }
 
-func AuthMiddleware(secret string, userSvc userservice.Service) gin.HandlerFunc {
+func AuthMiddleware(secret string, userSvc userservice.Service, jwtManager utils.JWTManager) gin.HandlerFunc {
 	return func(c *gin.Context) {
+
+		ctx := c.Request.Context()
+
+		//get bearer token
 		authHeader := c.GetHeader("Authorization")
 		if !strings.HasPrefix(authHeader, "Bearer ") {
+			logger.With(ctx).Error("missing or invalid token")
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing or invalid token"})
 			return
 		}
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 
+		//check cache for bearer token
+
 		// Parse and validate token
-		claims := jwt.MapClaims{}
-		token, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (interface{}, error) {
-			return []byte(secret), nil
-		})
-
-		if err != nil || !token.Valid {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-			return
-		}
-
-		// Manually check expiration
-		if expRaw, ok := claims["exp"]; ok {
-			switch exp := expRaw.(type) {
-			case float64:
-				if int64(exp) < time.Now().Unix() {
-					c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token expired"})
-					return
-				}
-			case json.Number: // If using json.Unmarshal
-				expInt, err := exp.Int64()
-				if err != nil || expInt < time.Now().Unix() {
-					c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token expired"})
-					return
-				}
-			default:
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid exp format"})
-				return
-			}
-		} else {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "exp not found in token"})
-			return
-		}
-
-		// Extract user ID
-		sub, ok := claims["sub"].(string)
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid subject"})
+		sub, err := jwtManager.ParseTokenAndExtractSub(tokenString, secret)
+		if err != nil {
+			logger.With(ctx).Error("bearer token parser failed", zap.Error(err))
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 			return
 		}
 
