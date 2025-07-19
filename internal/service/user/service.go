@@ -4,10 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/obi2na/petrel/config"
 	"github.com/obi2na/petrel/internal/db/models"
 	"github.com/obi2na/petrel/internal/logger"
 	utils "github.com/obi2na/petrel/internal/pkg"
@@ -16,18 +16,20 @@ import (
 
 type Service interface {
 	GetOrCreateUser(ctx context.Context, email, name, avatarURL string) (*models.User, error)
-	GetUserByID(ctx context.Context, userID string) (*models.User, error)
+	GetUserByTokenOrID(ctx context.Context, tokenString string) (*models.User, error)
 }
 
 type UserService struct {
-	queries models.Querier
-	Cache   utils.Cache
+	queries    models.Querier
+	Cache      utils.Cache
+	JWTManager utils.JWTManager
 }
 
-func NewUserService(db *pgxpool.Pool, cache utils.Cache) *UserService {
+func NewUserService(db *pgxpool.Pool, cache utils.Cache, jwtManager utils.JWTManager) *UserService {
 	return &UserService{
-		queries: models.New(db),
-		Cache:   cache,
+		queries:    models.New(db),
+		Cache:      cache,
+		JWTManager: jwtManager,
 	}
 }
 
@@ -76,32 +78,51 @@ func (s *UserService) GetOrCreateUser(ctx context.Context, email, name, avatarUR
 
 }
 
-func (s *UserService) GetUserByID(ctx context.Context, userID string) (*models.User, error) {
+func (s *UserService) GetUserByTokenOrID(ctx context.Context, tokenString string) (*models.User, error) {
+	// 1. Try session → user ID cache
+	if userID, ok := s.GetCachedUserIDByToken(ctx, tokenString); ok {
+		return s.getUserByIDWithCacheFallback(ctx, userID, tokenString)
+	}
 
-	// Step 1: Check Cache
-	if user, ok := s.GetCachedUserByID(ctx, userID); ok {
+	// 2. Parse JWT to extract sub
+	sub, err := s.JWTManager.ParseTokenAndExtractSub(tokenString, config.C.Auth0.PetrelJWTSecret)
+	if err != nil {
+		logger.With(ctx).Error("bearer token parser failed", zap.Error(err))
+		return nil, err
+	}
+
+	// 3. Try user cache again with sub
+	if user, ok := s.GetCachedUserByID(ctx, sub); ok {
+		// Backfill session cache
+		s.CacheSessionToken(tokenString, sub, 3600)
 		return user, nil
 	}
 
-	// Step 2: Fallback to DB
+	// 4. Load from DB and cache
+	return s.getUserByIDWithCacheFallback(ctx, sub, tokenString)
+}
+
+func (s *UserService) getUserByIDWithCacheFallback(ctx context.Context, userID, tokenString string) (*models.User, error) {
 	uid, err := uuid.Parse(userID)
 	if err != nil {
-		str := fmt.Sprintf("invalid user ID: %s", err)
-		logger.With(ctx).Error(str)
+		logger.With(ctx).Error("invalid user ID", zap.String("user_id", userID), zap.Error(err))
 		return nil, err
 	}
 
 	user, err := s.queries.GetUserByID(ctx, uid)
 	if err != nil {
-		str := fmt.Sprintf("GetUserByID query failed: %s", err)
-		logger.With(ctx).Error(str)
+		logger.With(ctx).Error("GetUserByID query failed", zap.Error(err))
 		return nil, err
 	}
 
-	// Step 3: Cache it
-	if ok := s.CacheUserByID(&user, 3600); !ok { // TTL = 1 hour
+	// Cache both user and token → userID
+	if ok := s.CacheUserByID(&user, 3600); !ok {
 		logger.With(ctx).Error("CacheUserByID failed")
 	}
+	if ok := s.CacheSessionToken(tokenString, userID, 3600); !ok {
+		logger.With(ctx).Error("CacheSessionToken failed")
+	}
+
 	return &user, nil
 }
 
@@ -125,7 +146,7 @@ func (s *UserService) GetCachedUserByID(ctx context.Context, userID string) (*mo
 		}
 	}
 
-	logger.With(ctx).Info("user does not exist in cache")
+	logger.With(ctx).Info("user-id does not exist in cache")
 	return nil, false
 }
 
@@ -137,7 +158,7 @@ func (s *UserService) GetCachedUserIDByToken(ctx context.Context, token string) 
 		}
 	}
 
-	logger.With(ctx).Info("user id does not exist in cache")
+	logger.With(ctx).Info("token does not exist in cache")
 	return "", false
 }
 

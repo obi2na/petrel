@@ -6,9 +6,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/obi2na/petrel/config"
 	"github.com/obi2na/petrel/internal/logger"
-	utils "github.com/obi2na/petrel/internal/pkg"
 	userservice "github.com/obi2na/petrel/internal/service/user"
-	"go.uber.org/zap"
 	"net/http"
 	"strings"
 	"time"
@@ -44,7 +42,7 @@ func CORSMiddleware() gin.HandlerFunc {
 	})
 }
 
-func AuthMiddleware(secret string, userSvc userservice.Service, jwtManager utils.JWTManager) gin.HandlerFunc {
+func AuthMiddleware(userSvc userservice.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 
 		ctx := c.Request.Context()
@@ -58,20 +56,15 @@ func AuthMiddleware(secret string, userSvc userservice.Service, jwtManager utils
 		}
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 
-		//check cache for bearer token
-
-		// Parse and validate token
-		sub, err := jwtManager.ParseTokenAndExtractSub(tokenString, secret)
-		if err != nil {
-			logger.With(ctx).Error("bearer token parser failed", zap.Error(err))
+		// validate bearer token
+		user, err := userSvc.GetUserByTokenOrID(ctx, tokenString)
+		if err != nil || user == nil {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 			return
 		}
 
-		//TODO: use sub to validate user
-
 		// Add to context
-		c.Set("user_id", sub)
+		c.Set("user_id", user.ID)
 		c.Next()
 	}
 }

@@ -20,7 +20,7 @@ func NewServiceContainer(db *pgxpool.Pool, cache utils.Cache) *ServiceContainer 
 		Timeout: 10 * time.Second,
 	}
 
-	userSvc := userservice.NewUserService(db, cache)
+	userSvc := userservice.NewUserService(db, cache, utils.NewJWTProvider())
 	authSvc := authService.NewAuthService(config.C.Auth0, httpClient, userSvc)
 
 	return &ServiceContainer{

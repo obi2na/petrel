@@ -23,8 +23,8 @@ type MockUserService struct {
 	mock.Mock
 }
 
-func (m *MockUserService) GetUserByID(ctx context.Context, userID string) (*models.User, error) {
-	args := m.Called(ctx, userID)
+func (m *MockUserService) GetUserByTokenOrID(ctx context.Context, tokenString string) (*models.User, error) {
+	args := m.Called(ctx, tokenString)
 	return args.Get(0).(*models.User), args.Error(1)
 }
 
