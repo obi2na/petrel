@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -15,17 +16,18 @@ import (
 
 type Service interface {
 	GetOrCreateUser(ctx context.Context, email, name, avatarURL string) (*models.User, error)
+	GetUserByID(ctx context.Context, userID string) (*models.User, error)
 }
 
 type UserService struct {
 	queries models.Querier
-	cache   utils.Cache
+	Cache   utils.Cache
 }
 
 func NewUserService(db *pgxpool.Pool, cache utils.Cache) *UserService {
 	return &UserService{
 		queries: models.New(db),
-		cache:   cache,
+		Cache:   cache,
 	}
 }
 
@@ -72,4 +74,77 @@ func (s *UserService) GetOrCreateUser(ctx context.Context, email, name, avatarUR
 	logger.With(ctx).Info(user.ID.String())
 	return &user, nil
 
+}
+
+func (s *UserService) GetUserByID(ctx context.Context, userID string) (*models.User, error) {
+
+	// Step 1: Check Cache
+	if user, ok := s.GetCachedUserByID(ctx, userID); ok {
+		return user, nil
+	}
+
+	// Step 2: Fallback to DB
+	uid, err := uuid.Parse(userID)
+	if err != nil {
+		str := fmt.Sprintf("invalid user ID: %s", err)
+		logger.With(ctx).Error(str)
+		return nil, err
+	}
+
+	user, err := s.queries.GetUserByID(ctx, uid)
+	if err != nil {
+		str := fmt.Sprintf("GetUserByID query failed: %s", err)
+		logger.With(ctx).Error(str)
+		return nil, err
+	}
+
+	// Step 3: Cache it
+	if ok := s.CacheUserByID(&user, 3600); !ok { // TTL = 1 hour
+		logger.With(ctx).Error("CacheUserByID failed")
+	}
+	return &user, nil
+}
+
+func (s *UserService) CacheSessionToken(token, userID string, ttl int64) bool {
+	return s.Cache.Set("session:"+token, userID, ttl)
+}
+
+func (s *UserService) CacheUserByID(user *models.User, ttl int64) bool {
+	if user == nil || user.ID == uuid.Nil {
+		return false
+	}
+
+	return s.Cache.Set("user:"+user.ID.String(), user, ttl)
+}
+
+func (s *UserService) GetCachedUserByID(ctx context.Context, userID string) (*models.User, bool) {
+	if val, ok := s.Cache.Get("user:" + userID); ok {
+		if user, ok := val.(*models.User); ok {
+			logger.With(ctx).Info("user found in cache")
+			return user, true
+		}
+	}
+
+	logger.With(ctx).Info("user does not exist in cache")
+	return nil, false
+}
+
+func (s *UserService) GetCachedUserIDByToken(ctx context.Context, token string) (string, bool) {
+	if val, ok := s.Cache.Get("session:" + token); ok {
+		if userID, ok := val.(string); ok {
+			logger.With(ctx).Info("user id found in cache")
+			return userID, true
+		}
+	}
+
+	logger.With(ctx).Info("user id does not exist in cache")
+	return "", false
+}
+
+func (s *UserService) ClearUserCache(userID string) {
+	s.Cache.Del("user:" + userID)
+}
+
+func (s *UserService) ClearSessionCache(token string) {
+	s.Cache.Del("session:" + token)
 }
