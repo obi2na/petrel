@@ -45,7 +45,7 @@ func main() {
 	defer dbConn.Close()
 	log.Println("DB connection successful")
 
-	// Init Services
+	// bootstrap Services
 	services := bootstrap.NewServiceContainer(dbConn, cache)
 
 	router := gin.Default()

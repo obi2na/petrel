@@ -5,19 +5,32 @@ import (
 	"github.com/obi2na/petrel/config"
 	"github.com/obi2na/petrel/internal/logger"
 	"github.com/obi2na/petrel/internal/pkg"
+	"github.com/obi2na/petrel/internal/service/notion"
 	"go.uber.org/zap"
 	"net/http"
 )
 
-func RegisterNotionRoutes(r *gin.RouterGroup) {
-	r.GET("/auth", NotionAuthRedirect)
-	r.GET("/auth/callback", NotionAuthCallback)
+func RegisterNotionRoutes(r *gin.RouterGroup, oauthSvc utils.OAuthService[notion.NotionTokenResponse]) {
+	notionHandler := NewNotionHandler(oauthSvc)
+	r.GET("/auth", notionHandler.AuthRedirect)
+	r.GET("/auth/callback", notionHandler.NotionAuthCallback)
 }
 
-// redirect for authorization
-func NotionAuthRedirect(c *gin.Context) {
+type NotionHandler[T any] struct {
+	OauthService utils.OAuthService[T]
+	JWTManager   utils.JWTManager
+}
+
+func NewNotionHandler[T notion.NotionTokenResponse](oauthSvc utils.OAuthService[T]) *NotionHandler[T] {
+	return &NotionHandler[T]{
+		OauthService: oauthSvc,
+		JWTManager:   utils.NewJWTProvider(),
+	}
+}
+
+func (h *NotionHandler[T]) AuthRedirect(c *gin.Context) {
 	ctx := c.Request.Context()
-	state, err := utils.GenerateStateJWT(config.C.Notion.StateSecret)
+	state, err := h.JWTManager.GenerateStateJWT(config.C.Notion.StateSecret)
 	if err != nil {
 		logger.With(ctx).Error("Failed to generate JWT state", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -25,21 +38,21 @@ func NotionAuthRedirect(c *gin.Context) {
 		})
 		return
 	}
-	redirectUrl := GetAuthURL(state)
+	redirectUrl := h.OauthService.GetAuthURL(state)
 	logger.With(ctx).Debug("Generated Notion OAuth URL", zap.String("url", redirectUrl))
 	logger.With(ctx).Info("Redirecting to Notion OAuth")
 	c.Redirect(http.StatusFound, redirectUrl)
+
 }
 
-func NotionAuthCallback(c *gin.Context) {
+func (h *NotionHandler[T]) NotionAuthCallback(c *gin.Context) {
 	ctx := c.Request.Context()
 	code := c.Query("code")
 	state := c.Query("state")
 
 	logger.With(ctx).Info("Notion OAuth callback", zap.String("code", code), zap.String("state", state))
-
 	// Validate signed token
-	if err := utils.ValidateStateJWT(state, config.C.Notion.StateSecret); err != nil {
+	if err := h.JWTManager.ValidateStateJWT(state, config.C.Notion.StateSecret); err != nil {
 		logger.With(ctx).Warn("Invalid or expired state JWT", zap.Error(err))
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "invalid or expired state",
@@ -47,25 +60,24 @@ func NotionAuthCallback(c *gin.Context) {
 	}
 	logger.With(ctx).Debug("JWT state validation successful", zap.String("code", code))
 
-	token, err := ExchangeCodeForToken(code, &http.Client{})
+	token, err := h.OauthService.ExchangeCodeForToken(ctx, utils.TokenRequestParams{
+		Code:        code,
+		RedirectURI: config.C.Notion.RedirectURI,
+	})
 	if err != nil {
 		logger.With(ctx).Warn("Token exchange failed", zap.Error(err))
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "token exchange failed",
 		})
+		return
 	}
 
-	logger.With(ctx).Info("Successfully exchanged token")
-	// Debug log token details (never exposed to user)
-	logger.With(ctx).Debug("Notion token exchanged",
-		zap.String("access_token", token.AccessToken),
-		zap.String("workspace_id", token.WorkspaceID),
-		zap.String("user_email", token.Owner.User.Person.Email),
-		zap.String("user_id", token.Owner.User.ID),
-	)
-
+	//cast to Notion Token
+	notionToken := any(token).(*notion.NotionTokenResponse)
 	c.JSON(http.StatusOK, gin.H{
-		"status":         "Token Exchanged successfully",
-		"workspace_name": token.WorkspaceName,
+		"status":         "success",
+		"workspace_id":   notionToken.WorkspaceID,
+		"workspace_name": notionToken.WorkspaceName,
 	})
+
 }

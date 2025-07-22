@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -274,3 +275,18 @@ func GetCache() (Cache, error) {
 }
 
 // ------ Cache Implementation ends----------
+
+// ------ OAuth Implementation starts 	-----------
+
+type TokenRequestParams struct {
+	Code         string
+	RedirectURI  string
+	CodeVerifier string
+}
+
+type OAuthService[T any] interface {
+	GetAuthURL(state string) string
+	ExchangeCodeForToken(ctx context.Context, params TokenRequestParams) (*T, error)
+}
+
+// ------ OAuth Implementation ends		-----------

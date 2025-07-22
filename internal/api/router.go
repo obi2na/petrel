@@ -17,12 +17,15 @@ const (
 func RegisterRoutes(r *gin.Engine, services *bootstrap.ServiceContainer) {
 	r.GET(HealthPath, appHealth)
 
+	//register auth routes
 	authGroup := r.Group("/auth")
 	auth.RegisterAuthRoutes(authGroup, services.AuthSvc)
 
+	// register notion services
+	notionOauthSvc := services.NotionOauthSvc
 	notionGroup := r.Group("/notion")
 	notionGroup.Use(middleware.AuthMiddleware(services.UserSvc))
-	notion.RegisterNotionRoutes(notionGroup)
+	notion.RegisterNotionRoutes(notionGroup, notionOauthSvc)
 }
 
 func appHealth(c *gin.Context) {

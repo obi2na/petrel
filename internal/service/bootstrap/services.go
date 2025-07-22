@@ -5,14 +5,16 @@ import (
 	"github.com/obi2na/petrel/config"
 	"github.com/obi2na/petrel/internal/pkg"
 	"github.com/obi2na/petrel/internal/service/auth"
+	"github.com/obi2na/petrel/internal/service/notion"
 	"github.com/obi2na/petrel/internal/service/user"
 	"net/http"
 	"time"
 )
 
 type ServiceContainer struct {
-	UserSvc userservice.Service
-	AuthSvc authService.AuthService
+	UserSvc        userservice.Service
+	AuthSvc        authService.AuthService
+	NotionOauthSvc utils.OAuthService[notion.NotionTokenResponse]
 }
 
 func NewServiceContainer(db *pgxpool.Pool, cache utils.Cache) *ServiceContainer {
@@ -22,9 +24,11 @@ func NewServiceContainer(db *pgxpool.Pool, cache utils.Cache) *ServiceContainer 
 
 	userSvc := userservice.NewUserService(db, cache, utils.NewJWTProvider())
 	authSvc := authService.NewAuthService(config.C.Auth0, httpClient, userSvc)
+	notionOauthSvc := notion.NewNotionOAuthService(httpClient)
 
 	return &ServiceContainer{
-		UserSvc: userSvc,
-		AuthSvc: authSvc,
+		UserSvc:        userSvc,
+		AuthSvc:        authSvc,
+		NotionOauthSvc: notionOauthSvc,
 	}
 }
