@@ -114,3 +114,38 @@ func (q *Queries) GetIntegrationsForUser(ctx context.Context, userID pgtype.UUID
 	}
 	return items, nil
 }
+
+const getNotionIntegrationsForUser = `-- name: GetNotionIntegrationsForUser :many
+SELECT i.id, i.user_id, i.service, i.access_token, i.refresh_token, i.token_type, i.expires_at, i.created_at
+FROM integrations i
+WHERE i.user_id = $1 AND i.service = 'notion'
+`
+
+func (q *Queries) GetNotionIntegrationsForUser(ctx context.Context, userID pgtype.UUID) ([]Integration, error) {
+	rows, err := q.db.Query(ctx, getNotionIntegrationsForUser, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Integration{}
+	for rows.Next() {
+		var i Integration
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Service,
+			&i.AccessToken,
+			&i.RefreshToken,
+			&i.TokenType,
+			&i.ExpiresAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

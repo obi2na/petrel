@@ -23,9 +23,10 @@ func RegisterRoutes(r *gin.Engine, services *bootstrap.ServiceContainer) {
 
 	// register notion services
 	notionOauthSvc := services.NotionOauthSvc
+	notionSvc := services.NotionSvc
 	notionGroup := r.Group("/notion")
 	notionGroup.Use(middleware.AuthMiddleware(services.UserSvc))
-	notion.RegisterNotionRoutes(notionGroup, notionOauthSvc)
+	notion.RegisterNotionRoutes(notionGroup, notionOauthSvc, notionSvc)
 }
 
 func appHealth(c *gin.Context) {

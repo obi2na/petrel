@@ -24,6 +24,7 @@ type Querier interface {
 	GetIntegrationsForUser(ctx context.Context, userID pgtype.UUID) ([]Integration, error)
 	GetNotionIntegrationByIntegrationID(ctx context.Context, integrationID uuid.UUID) (NotionIntegration, error)
 	GetNotionIntegrationByWorkspaceID(ctx context.Context, workspaceID string) (NotionIntegration, error)
+	GetNotionIntegrationsForUser(ctx context.Context, userID pgtype.UUID) ([]Integration, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
 	ListUsers(ctx context.Context) ([]User, error)

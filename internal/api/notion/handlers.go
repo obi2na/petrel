@@ -2,6 +2,7 @@ package notion
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/obi2na/petrel/config"
 	"github.com/obi2na/petrel/internal/logger"
 	"github.com/obi2na/petrel/internal/pkg"
@@ -10,21 +11,23 @@ import (
 	"net/http"
 )
 
-func RegisterNotionRoutes(r *gin.RouterGroup, oauthSvc utils.OAuthService[notion.NotionTokenResponse]) {
-	notionHandler := NewNotionHandler(oauthSvc)
+func RegisterNotionRoutes(r *gin.RouterGroup, oauthSvc utils.OAuthService[notion.NotionTokenResponse], notionSvc notion.Service) {
+	notionHandler := NewNotionHandler(oauthSvc, notionSvc)
 	r.GET("/auth", notionHandler.AuthRedirect)
 	r.GET("/auth/callback", notionHandler.NotionAuthCallback)
 }
 
 type NotionHandler[T any] struct {
-	OauthService utils.OAuthService[T]
-	JWTManager   utils.JWTManager
+	OauthService  utils.OAuthService[T]
+	JWTManager    utils.JWTManager
+	NotionService notion.Service
 }
 
-func NewNotionHandler[T notion.NotionTokenResponse](oauthSvc utils.OAuthService[T]) *NotionHandler[T] {
+func NewNotionHandler[T notion.NotionTokenResponse](oauthSvc utils.OAuthService[T], notionSvc notion.Service) *NotionHandler[T] {
 	return &NotionHandler[T]{
-		OauthService: oauthSvc,
-		JWTManager:   utils.NewJWTProvider(),
+		OauthService:  oauthSvc,
+		JWTManager:    utils.NewJWTProvider(),
+		NotionService: notionSvc,
 	}
 }
 
@@ -72,8 +75,28 @@ func (h *NotionHandler[T]) NotionAuthCallback(c *gin.Context) {
 		return
 	}
 
-	//cast to Notion Token
+	//cast to Notion Tokens
 	notionToken := any(token).(*notion.NotionTokenResponse)
+
+	// get user_id
+	userIDRaw, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user ID not found"})
+		return
+	}
+	userID, ok := userIDRaw.(uuid.UUID)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user ID format"})
+		return
+	}
+
+	// Save to DB
+	if err := h.NotionService.SaveIntegration(ctx, userID, notionToken); err != nil {
+		logger.With(ctx).Error("Failed to save notion integration", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not save integration"})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"status":         "success",
 		"workspace_id":   notionToken.WorkspaceID,

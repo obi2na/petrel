@@ -13,3 +13,8 @@ WHERE user_id = $1;
 SELECT * FROM integrations
 WHERE user_id = $1 AND service = $2
 LIMIT 1;
+
+-- name: GetNotionIntegrationsForUser :many
+SELECT i.*
+FROM integrations i
+WHERE i.user_id = $1 AND i.service = 'notion';

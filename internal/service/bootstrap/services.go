@@ -15,6 +15,7 @@ type ServiceContainer struct {
 	UserSvc        userservice.Service
 	AuthSvc        authService.AuthService
 	NotionOauthSvc utils.OAuthService[notion.NotionTokenResponse]
+	NotionSvc      notion.Service
 }
 
 func NewServiceContainer(db *pgxpool.Pool, cache utils.Cache) *ServiceContainer {
@@ -25,10 +26,12 @@ func NewServiceContainer(db *pgxpool.Pool, cache utils.Cache) *ServiceContainer 
 	userSvc := userservice.NewUserService(db, cache, utils.NewJWTProvider())
 	authSvc := authService.NewAuthService(config.C.Auth0, httpClient, userSvc)
 	notionOauthSvc := notion.NewNotionOAuthService(httpClient)
+	notionSvc := notion.NewNotionService(db, httpClient)
 
 	return &ServiceContainer{
 		UserSvc:        userSvc,
 		AuthSvc:        authSvc,
 		NotionOauthSvc: notionOauthSvc,
+		NotionSvc:      notionSvc,
 	}
 }
