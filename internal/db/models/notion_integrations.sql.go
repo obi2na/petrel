@@ -23,24 +23,29 @@ INSERT INTO notion_integrations (
     notion_user_id,
     notion_user_name,
     notion_user_avatar,
-    notion_user_email
+    notion_user_email,
+    drafts_page_id,
+    last_validated_at
 ) VALUES (
-             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+             $11, $12
          )
-    RETURNING id, integration_id, workspace_id, workspace_name, workspace_icon, bot_id, notion_user_id, notion_user_name, notion_user_avatar, notion_user_email, created_at
+    RETURNING id, integration_id, workspace_id, workspace_name, workspace_icon, bot_id, notion_user_id, notion_user_name, notion_user_avatar, notion_user_email, drafts_page_id, last_validated_at, drafts_page_status, created_at, updated_at
 `
 
 type CreateNotionIntegrationParams struct {
-	ID               uuid.UUID   `json:"id"`
-	IntegrationID    uuid.UUID   `json:"integration_id"`
-	WorkspaceID      string      `json:"workspace_id"`
-	WorkspaceName    pgtype.Text `json:"workspace_name"`
-	WorkspaceIcon    pgtype.Text `json:"workspace_icon"`
-	BotID            pgtype.Text `json:"bot_id"`
-	NotionUserID     pgtype.Text `json:"notion_user_id"`
-	NotionUserName   pgtype.Text `json:"notion_user_name"`
-	NotionUserAvatar pgtype.Text `json:"notion_user_avatar"`
-	NotionUserEmail  pgtype.Text `json:"notion_user_email"`
+	ID               uuid.UUID        `json:"id"`
+	IntegrationID    uuid.UUID        `json:"integration_id"`
+	WorkspaceID      string           `json:"workspace_id"`
+	WorkspaceName    pgtype.Text      `json:"workspace_name"`
+	WorkspaceIcon    pgtype.Text      `json:"workspace_icon"`
+	BotID            pgtype.Text      `json:"bot_id"`
+	NotionUserID     pgtype.Text      `json:"notion_user_id"`
+	NotionUserName   pgtype.Text      `json:"notion_user_name"`
+	NotionUserAvatar pgtype.Text      `json:"notion_user_avatar"`
+	NotionUserEmail  pgtype.Text      `json:"notion_user_email"`
+	DraftsPageID     pgtype.Text      `json:"drafts_page_id"`
+	LastValidatedAt  pgtype.Timestamp `json:"last_validated_at"`
 }
 
 func (q *Queries) CreateNotionIntegration(ctx context.Context, arg CreateNotionIntegrationParams) (NotionIntegration, error) {
@@ -55,6 +60,8 @@ func (q *Queries) CreateNotionIntegration(ctx context.Context, arg CreateNotionI
 		arg.NotionUserName,
 		arg.NotionUserAvatar,
 		arg.NotionUserEmail,
+		arg.DraftsPageID,
+		arg.LastValidatedAt,
 	)
 	var i NotionIntegration
 	err := row.Scan(
@@ -68,7 +75,11 @@ func (q *Queries) CreateNotionIntegration(ctx context.Context, arg CreateNotionI
 		&i.NotionUserName,
 		&i.NotionUserAvatar,
 		&i.NotionUserEmail,
+		&i.DraftsPageID,
+		&i.LastValidatedAt,
+		&i.DraftsPageStatus,
 		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -83,8 +94,50 @@ func (q *Queries) DeleteNotionIntegrationByIntegrationID(ctx context.Context, in
 	return err
 }
 
+const getDraftsPagesNeedingValidation = `-- name: GetDraftsPagesNeedingValidation :many
+SELECT id, integration_id, workspace_id, workspace_name, workspace_icon, bot_id, notion_user_id, notion_user_name, notion_user_avatar, notion_user_email, drafts_page_id, last_validated_at, drafts_page_status, created_at, updated_at FROM notion_integrations
+WHERE last_validated_at IS NULL
+   OR last_validated_at < now() - interval '1 day'
+`
+
+func (q *Queries) GetDraftsPagesNeedingValidation(ctx context.Context) ([]NotionIntegration, error) {
+	rows, err := q.db.Query(ctx, getDraftsPagesNeedingValidation)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []NotionIntegration{}
+	for rows.Next() {
+		var i NotionIntegration
+		if err := rows.Scan(
+			&i.ID,
+			&i.IntegrationID,
+			&i.WorkspaceID,
+			&i.WorkspaceName,
+			&i.WorkspaceIcon,
+			&i.BotID,
+			&i.NotionUserID,
+			&i.NotionUserName,
+			&i.NotionUserAvatar,
+			&i.NotionUserEmail,
+			&i.DraftsPageID,
+			&i.LastValidatedAt,
+			&i.DraftsPageStatus,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getNotionIntegrationByIntegrationID = `-- name: GetNotionIntegrationByIntegrationID :one
-SELECT id, integration_id, workspace_id, workspace_name, workspace_icon, bot_id, notion_user_id, notion_user_name, notion_user_avatar, notion_user_email, created_at FROM notion_integrations
+SELECT id, integration_id, workspace_id, workspace_name, workspace_icon, bot_id, notion_user_id, notion_user_name, notion_user_avatar, notion_user_email, drafts_page_id, last_validated_at, drafts_page_status, created_at, updated_at FROM notion_integrations
 WHERE integration_id = $1
 `
 
@@ -102,13 +155,17 @@ func (q *Queries) GetNotionIntegrationByIntegrationID(ctx context.Context, integ
 		&i.NotionUserName,
 		&i.NotionUserAvatar,
 		&i.NotionUserEmail,
+		&i.DraftsPageID,
+		&i.LastValidatedAt,
+		&i.DraftsPageStatus,
 		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const getNotionIntegrationByWorkspaceID = `-- name: GetNotionIntegrationByWorkspaceID :one
-SELECT id, integration_id, workspace_id, workspace_name, workspace_icon, bot_id, notion_user_id, notion_user_name, notion_user_avatar, notion_user_email, created_at FROM notion_integrations
+SELECT id, integration_id, workspace_id, workspace_name, workspace_icon, bot_id, notion_user_id, notion_user_name, notion_user_avatar, notion_user_email, drafts_page_id, last_validated_at, drafts_page_status, created_at, updated_at FROM notion_integrations
 WHERE workspace_id = $1
 `
 
@@ -126,7 +183,47 @@ func (q *Queries) GetNotionIntegrationByWorkspaceID(ctx context.Context, workspa
 		&i.NotionUserName,
 		&i.NotionUserAvatar,
 		&i.NotionUserEmail,
+		&i.DraftsPageID,
+		&i.LastValidatedAt,
+		&i.DraftsPageStatus,
 		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const updateDraftsPageID = `-- name: UpdateDraftsPageID :exec
+UPDATE notion_integrations
+SET drafts_page_id = $1,
+    updated_at = now()
+WHERE integration_id = $2
+`
+
+type UpdateDraftsPageIDParams struct {
+	DraftsPageID  pgtype.Text `json:"drafts_page_id"`
+	IntegrationID uuid.UUID   `json:"integration_id"`
+}
+
+func (q *Queries) UpdateDraftsPageID(ctx context.Context, arg UpdateDraftsPageIDParams) error {
+	_, err := q.db.Exec(ctx, updateDraftsPageID, arg.DraftsPageID, arg.IntegrationID)
+	return err
+}
+
+const updateDraftsPageValidationStatus = `-- name: UpdateDraftsPageValidationStatus :exec
+UPDATE notion_integrations
+SET last_validated_at = $1,
+    drafts_page_status = $2,
+    updated_at = now()
+WHERE drafts_page_id = $3
+`
+
+type UpdateDraftsPageValidationStatusParams struct {
+	LastValidatedAt  pgtype.Timestamp `json:"last_validated_at"`
+	DraftsPageStatus pgtype.Text      `json:"drafts_page_status"`
+	DraftsPageID     pgtype.Text      `json:"drafts_page_id"`
+}
+
+func (q *Queries) UpdateDraftsPageValidationStatus(ctx context.Context, arg UpdateDraftsPageValidationStatusParams) error {
+	_, err := q.db.Exec(ctx, updateDraftsPageValidationStatus, arg.LastValidatedAt, arg.DraftsPageStatus, arg.DraftsPageID)
+	return err
 }

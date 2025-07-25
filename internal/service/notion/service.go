@@ -162,6 +162,10 @@ func (s *NotionService) SaveIntegration(ctx context.Context, userID uuid.UUID, t
 		return fmt.Errorf("failed to create new integrations for user %s: %w", userID, err)
 	}
 
+	// TODO: create drafts hub in users notion account
+	draftsPageID := ""
+	logger.With(ctx).Info("Petrel Drafts Hub created")
+
 	_, err = s.DB.CreateNotionIntegration(ctx, models.CreateNotionIntegrationParams{
 		ID:               uuid.New(),
 		IntegrationID:    integrationID,
@@ -173,6 +177,7 @@ func (s *NotionService) SaveIntegration(ctx context.Context, userID uuid.UUID, t
 		NotionUserName:   pgtype.Text{String: token.Owner.User.Name, Valid: true},
 		NotionUserAvatar: pgtype.Text{String: token.Owner.User.AvatarURL, Valid: true},
 		NotionUserEmail:  pgtype.Text{String: token.Owner.User.Person.Email, Valid: true},
+		DraftsPageID:     pgtype.Text{String: draftsPageID, Valid: true},
 	})
 	if err != nil {
 		logger.With(ctx).Error("CreateNotionIntegration failed", zap.Error(err))
