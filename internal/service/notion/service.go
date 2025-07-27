@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jomei/notionapi"
 	"github.com/obi2na/petrel/config"
 	"github.com/obi2na/petrel/internal/db/models"
 	"github.com/obi2na/petrel/internal/logger"
@@ -107,28 +108,31 @@ func (n *NotionOAuthService) ExchangeCodeForToken(ctx context.Context, params ut
 }
 
 type Service interface {
-	SaveIntegration(ctx context.Context, userID uuid.UUID, token *NotionTokenResponse) error
+	SaveIntegration(ctx context.Context, userID uuid.UUID, token *NotionTokenResponse) (models.NotionIntegration, error)
+	CreatePetrelDraftsRepo(ctx context.Context, accessToken string) (string, error)
 }
 
 type NotionService struct {
-	DB         models.Querier
-	HttpClient utils.HTTPClient
+	DB           models.Querier
+	HttpClient   utils.HTTPClient
+	NotionClient utils.NotionApiClient
 }
 
-func NewNotionService(db *pgxpool.Pool, client utils.HTTPClient) *NotionService {
+func NewNotionService(db *pgxpool.Pool, httpClient utils.HTTPClient, notionClient utils.NotionApiClient) *NotionService {
 	return &NotionService{
-		DB:         models.New(db),
-		HttpClient: client,
+		DB:           models.New(db),
+		HttpClient:   httpClient,
+		NotionClient: notionClient,
 	}
 }
 
-func (s *NotionService) SaveIntegration(ctx context.Context, userID uuid.UUID, token *NotionTokenResponse) error {
+func (s *NotionService) SaveIntegration(ctx context.Context, userID uuid.UUID, token *NotionTokenResponse) (models.NotionIntegration, error) {
 
-	// many queries returns an empty slice
+	// Lookup all notion integrations for user
 	integrations, err := s.DB.GetNotionIntegrationsForUser(ctx, pgtype.UUID{userID, true})
 	if err != nil {
 		logger.With(ctx).Error("GetNotionIntegrationsForUser query failed", zap.Error(err))
-		return fmt.Errorf("failed to fetch existing integrations: %w", err)
+		return models.NotionIntegration{}, fmt.Errorf("failed to fetch existing integrations: %w", err)
 	}
 
 	// For each integration, lookup its corresponding notion_integration and match workspace_id
@@ -138,7 +142,7 @@ func (s *NotionService) SaveIntegration(ctx context.Context, userID uuid.UUID, t
 			// confirm access token works
 			if s.isAccessTokenValid(ctx, integration.AccessToken) {
 				logger.With(ctx).Info("notion already integrated and token still valid")
-				return nil // Already integrated and token still valid, skip resaving
+				return notionMeta, nil // Already integrated and token still valid, skip resaving
 			}
 			break // stop loop we found a match
 		}
@@ -159,14 +163,16 @@ func (s *NotionService) SaveIntegration(ctx context.Context, userID uuid.UUID, t
 	_, dbErr := s.DB.CreateIntegration(ctx, integrationParams)
 	if dbErr != nil {
 		logger.With(ctx).Error("CreateIntegration query failed", zap.Error(err))
-		return fmt.Errorf("failed to create new integrations for user %s: %w", userID, err)
+		return models.NotionIntegration{}, fmt.Errorf("failed to create new integrations for user %s: %w", userID, err)
 	}
 
-	// TODO: create drafts hub in users notion account
-	draftsPageID := ""
-	logger.With(ctx).Info("Petrel Drafts Hub created")
+	// Create Drafts Repo to get draftsPageID
+	draftsPageID, err := s.CreatePetrelDraftsRepo(ctx, token.AccessToken)
+	if err != nil {
+		return models.NotionIntegration{}, err
+	}
 
-	_, err = s.DB.CreateNotionIntegration(ctx, models.CreateNotionIntegrationParams{
+	notionIntegration, err := s.DB.CreateNotionIntegration(ctx, models.CreateNotionIntegrationParams{
 		ID:               uuid.New(),
 		IntegrationID:    integrationID,
 		WorkspaceID:      token.WorkspaceID,
@@ -181,13 +187,13 @@ func (s *NotionService) SaveIntegration(ctx context.Context, userID uuid.UUID, t
 	})
 	if err != nil {
 		logger.With(ctx).Error("CreateNotionIntegration failed", zap.Error(err))
-		return fmt.Errorf("failed to save Notion metadata: %w", err)
+		return models.NotionIntegration{}, fmt.Errorf("failed to save Notion metadata: %w", err)
 	}
 
 	str := fmt.Sprintf("new notion integration added for user %s", userID.String())
 	logger.With(ctx).Info(str)
 
-	return nil
+	return notionIntegration, nil
 }
 
 func (s *NotionService) isAccessTokenValid(ctx context.Context, accessToken string) bool {
@@ -207,4 +213,51 @@ func (s *NotionService) isAccessTokenValid(ctx context.Context, accessToken stri
 	}
 
 	return false
+}
+
+func (s *NotionService) CreatePetrelDraftsRepo(ctx context.Context, accessToken string) (string, error) {
+
+	createReq := &notionapi.PageCreateRequest{
+		Parent: notionapi.Parent{
+			Type:      notionapi.ParentTypeWorkspace,
+			Workspace: true,
+		},
+		Properties: notionapi.Properties{
+			"title": notionapi.TitleProperty{
+				Title: []notionapi.RichText{
+					{
+						Text: &notionapi.Text{
+							Content: "📝 Petrel Drafts Repo",
+						},
+					},
+				},
+			},
+		},
+		Children: []notionapi.Block{
+			&notionapi.ParagraphBlock{
+				BasicBlock: notionapi.BasicBlock{
+					Object: notionapi.ObjectTypeBlock,
+					Type:   notionapi.BlockTypeParagraph,
+				},
+				Paragraph: notionapi.Paragraph{
+					RichText: []notionapi.RichText{
+						{
+							Text: &notionapi.Text{
+								Content: "This is your Petrel-managed drafts repository. All unpublished AI content lives here.",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	page, err := s.NotionClient.CreatePage(ctx, accessToken, createReq)
+	if err != nil {
+		logger.With(ctx).Error("failed to create Petrel Drafts Repo", zap.Error(err))
+		return "", fmt.Errorf("failed to create Petrel Drafts Repo: %w", err)
+	}
+
+	logger.With(ctx).Info("Petrel Drafts Repo created", zap.String("page_id", page.ID.String()))
+	return page.ID.String(), nil
 }
