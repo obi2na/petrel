@@ -91,7 +91,8 @@ func (h *NotionHandler[T]) NotionAuthCallback(c *gin.Context) {
 	}
 
 	// Save to DB
-	if err := h.NotionService.SaveIntegration(ctx, userID, notionToken); err != nil {
+	notionMeta, err := h.NotionService.SaveIntegration(ctx, userID, notionToken)
+	if err != nil {
 		logger.With(ctx).Error("Failed to save notion integration", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "could not save integration"})
 		return
@@ -99,8 +100,17 @@ func (h *NotionHandler[T]) NotionAuthCallback(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"status":         "success",
-		"workspace_id":   notionToken.WorkspaceID,
-		"workspace_name": notionToken.WorkspaceName,
+		"petrel_user_id": userID.String(),
+		"notion": gin.H{
+			"workspace_id":       notionMeta.WorkspaceID,
+			"workspace_name":     notionMeta.WorkspaceName,
+			"drafts_page_id":     notionMeta.DraftsPageID,
+			"drafts_repo_url":    utils.BuildNotionDraftRepoUrl(notionMeta.DraftsPageID.String),
+			"drafts_page_status": notionMeta.DraftsPageStatus,
+			"user_id":            notionMeta.NotionUserID,
+			"name":               notionMeta.NotionUserName,
+			"email":              notionMeta.NotionUserEmail,
+			"avatar_url":         notionMeta.NotionUserAvatar,
+		},
 	})
-
 }

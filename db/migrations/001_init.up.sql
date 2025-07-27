@@ -1,38 +1,78 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto"; -- only once per DB
 
+-- ENUM: draft_status
+CREATE TYPE draft_status AS ENUM ('draft', 'published', 'orphaned', 'archived');
+
+-- USERS TABLE
 CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email TEXT NOT NULL UNIQUE,
-    name TEXT NOT NULL,
-    avatar_url TEXT,
-    is_active BOOLEAN DEFAULT true,
-    provider TEXT DEFAULT 'petrel',
-    last_login_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                       email TEXT NOT NULL UNIQUE,
+                       name TEXT NOT NULL,
+                       avatar_url TEXT,
+                       is_active BOOLEAN DEFAULT true,
+                       provider TEXT DEFAULT 'petrel',
+                       last_login_at TIMESTAMPTZ,
+                       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+                       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- INTEGRATIONS TABLE
 CREATE TABLE integrations (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES users(id),
-    service TEXT NOT NULL, -- e.g 'notion', 'confluence'
-    access_token TEXT NOT NULL,
-    refresh_token TEXT,
-    token_type TEXT,
-    expires_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ DEFAULT now()
+                              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                              user_id UUID REFERENCES users(id),
+                              service TEXT NOT NULL, -- e.g 'notion', 'confluence'
+                              access_token TEXT NOT NULL,
+                              refresh_token TEXT,
+                              token_type TEXT,
+                              expires_at TIMESTAMPTZ,
+                              created_at TIMESTAMPTZ DEFAULT now()
 );
 
+-- NOTION INTEGRATIONS TABLE
 CREATE TABLE notion_integrations (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    integration_id UUID NOT NULL REFERENCES integrations(id) ON DELETE CASCADE,
-    workspace_id TEXT NOT NULL,
-    workspace_name TEXT,
-    workspace_icon TEXT,
-    bot_id TEXT,
-    notion_user_id TEXT,
-    notion_user_name TEXT,
-    notion_user_avatar TEXT,
-    notion_user_email TEXT,
-    created_at TIMESTAMPTZ DEFAULT now()
+                                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                                     integration_id UUID NOT NULL REFERENCES integrations(id) ON DELETE CASCADE,
+                                     workspace_id TEXT NOT NULL,
+                                     workspace_name TEXT,
+                                     workspace_icon TEXT,
+                                     bot_id TEXT,
+                                     notion_user_id TEXT,
+                                     notion_user_name TEXT,
+                                     notion_user_avatar TEXT,
+                                     notion_user_email TEXT,
+                                     drafts_page_id TEXT,                        -- drafts hub id
+                                     last_validated_at TIMESTAMP,
+                                     drafts_page_status TEXT DEFAULT 'valid',    -- valid | missing | inaccessible
+                                     created_at TIMESTAMPTZ DEFAULT now(),
+                                     updated_at TIMESTAMP DEFAULT now()
 );
+
+-- NOTION DRAFTS TABLE
+CREATE TABLE notion_drafts (
+                               id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                               user_id UUID NOT NULL REFERENCES users(id),
+                               notion_integration_id UUID NOT NULL REFERENCES notion_integrations(id),
+                               notion_page_id TEXT NOT NULL UNIQUE,
+                               published_page_id TEXT,
+                               title TEXT,
+                               status draft_status DEFAULT 'draft',        -- enum type
+                               is_orphaned BOOLEAN DEFAULT false,
+                               created_at TIMESTAMP DEFAULT now(),
+                               updated_at TIMESTAMP DEFAULT now()
+);
+
+-- INDEXES
+
+-- integrations
+CREATE INDEX idx_integrations_user_id ON integrations(user_id);
+CREATE INDEX idx_integrations_user_service ON integrations(user_id, service);
+
+-- notion_integrations
+CREATE INDEX idx_notion_integrations_integration_id ON notion_integrations(integration_id);
+CREATE INDEX idx_notion_integrations_status ON notion_integrations(drafts_page_status);
+
+-- notion_drafts
+CREATE INDEX idx_notion_drafts_user_id ON notion_drafts(user_id);
+CREATE INDEX idx_notion_drafts_integration_id ON notion_drafts(notion_integration_id);
+CREATE INDEX idx_notion_drafts_status ON notion_drafts(status);
+CREATE INDEX idx_notion_drafts_orphaned ON notion_drafts(is_orphaned);

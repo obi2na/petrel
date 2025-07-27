@@ -5,9 +5,56 @@
 package models
 
 import (
+	"database/sql/driver"
+	"fmt"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type DraftStatus string
+
+const (
+	DraftStatusDraft     DraftStatus = "draft"
+	DraftStatusPublished DraftStatus = "published"
+	DraftStatusOrphaned  DraftStatus = "orphaned"
+	DraftStatusArchived  DraftStatus = "archived"
+)
+
+func (e *DraftStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = DraftStatus(s)
+	case string:
+		*e = DraftStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for DraftStatus: %T", src)
+	}
+	return nil
+}
+
+type NullDraftStatus struct {
+	DraftStatus DraftStatus `json:"draft_status"`
+	Valid       bool        `json:"valid"` // Valid is true if DraftStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullDraftStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.DraftStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.DraftStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullDraftStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.DraftStatus), nil
+}
 
 type Integration struct {
 	ID           uuid.UUID          `json:"id"`
@@ -18,6 +65,19 @@ type Integration struct {
 	TokenType    pgtype.Text        `json:"token_type"`
 	ExpiresAt    pgtype.Timestamptz `json:"expires_at"`
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
+type NotionDraft struct {
+	ID                  uuid.UUID        `json:"id"`
+	UserID              uuid.UUID        `json:"user_id"`
+	NotionIntegrationID uuid.UUID        `json:"notion_integration_id"`
+	NotionPageID        string           `json:"notion_page_id"`
+	PublishedPageID     pgtype.Text      `json:"published_page_id"`
+	Title               pgtype.Text      `json:"title"`
+	Status              NullDraftStatus  `json:"status"`
+	IsOrphaned          pgtype.Bool      `json:"is_orphaned"`
+	CreatedAt           pgtype.Timestamp `json:"created_at"`
+	UpdatedAt           pgtype.Timestamp `json:"updated_at"`
 }
 
 type NotionIntegration struct {
@@ -31,7 +91,11 @@ type NotionIntegration struct {
 	NotionUserName   pgtype.Text        `json:"notion_user_name"`
 	NotionUserAvatar pgtype.Text        `json:"notion_user_avatar"`
 	NotionUserEmail  pgtype.Text        `json:"notion_user_email"`
+	DraftsPageID     pgtype.Text        `json:"drafts_page_id"`
+	LastValidatedAt  pgtype.Timestamp   `json:"last_validated_at"`
+	DraftsPageStatus pgtype.Text        `json:"drafts_page_status"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamp   `json:"updated_at"`
 }
 
 type User struct {

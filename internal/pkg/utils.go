@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"github.com/dgraph-io/ristretto"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/jomei/notionapi"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -290,3 +292,26 @@ type OAuthService[T any] interface {
 }
 
 // ------ OAuth Implementation ends		-----------
+
+// ------ Notion Api Client starts -------------
+
+type NotionApiClient interface {
+	CreatePage(ctx context.Context, token string, req *notionapi.PageCreateRequest) (*notionapi.Page, error)
+}
+
+type JomeiClient struct{}
+
+func NewJomeiClient() *JomeiClient {
+	return &JomeiClient{}
+}
+
+func (j *JomeiClient) CreatePage(ctx context.Context, token string, req *notionapi.PageCreateRequest) (*notionapi.Page, error) {
+	client := notionapi.NewClient(notionapi.Token(token))
+	return client.Page.Create(ctx, req)
+}
+
+func BuildNotionDraftRepoUrl(pageID string) string {
+	return "https://www.notion.so/" + strings.ReplaceAll(pageID, "-", "")
+}
+
+// ------ Notion Api Client starts -------------

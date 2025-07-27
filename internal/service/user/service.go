@@ -81,8 +81,15 @@ func (s *UserService) GetOrCreateUser(ctx context.Context, email, name, avatarUR
 func (s *UserService) GetUserByTokenOrID(ctx context.Context, tokenString string) (*models.User, error) {
 	// 1. Try session → user ID cache
 	if userID, ok := s.GetCachedUserIDByToken(ctx, tokenString); ok {
+		// Try user-id → user cache
+		if user, ok := s.GetCachedUserByID(ctx, userID); ok {
+			return user, nil
+		}
+
+		// User not in cache -> fallback to DB + cache
 		return s.getUserByIDWithCacheFallback(ctx, userID, tokenString)
 	}
+	// session token not in cache
 
 	// 2. Parse JWT to extract sub
 	sub, err := s.JWTManager.ParseTokenAndExtractSub(tokenString, config.C.Auth0.PetrelJWTSecret)
