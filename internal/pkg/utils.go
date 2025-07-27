@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"github.com/dgraph-io/ristretto"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/jomei/notionapi"
+	"github.com/obi2na/petrel/internal/db/models"
 	"net/http"
 	"strings"
 	"sync"
@@ -315,3 +317,9 @@ func BuildNotionDraftRepoUrl(pageID string) string {
 }
 
 // ------ Notion Api Client starts -------------
+
+// db
+type DB interface {
+	models.Querier
+	WithTx(pgx.Tx) *models.Queries
+}

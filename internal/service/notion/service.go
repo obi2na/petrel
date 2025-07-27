@@ -113,14 +113,16 @@ type Service interface {
 }
 
 type NotionService struct {
-	DB           models.Querier
+	DB           utils.DB
+	DBPool       *pgxpool.Pool
 	HttpClient   utils.HTTPClient
 	NotionClient utils.NotionApiClient
 }
 
-func NewNotionService(db *pgxpool.Pool, httpClient utils.HTTPClient, notionClient utils.NotionApiClient) *NotionService {
+func NewNotionService(pool *pgxpool.Pool, httpClient utils.HTTPClient, notionClient utils.NotionApiClient) *NotionService {
 	return &NotionService{
-		DB:           models.New(db),
+		DB:           models.New(pool),
+		DBPool:       pool,
 		HttpClient:   httpClient,
 		NotionClient: notionClient,
 	}
@@ -148,6 +150,16 @@ func (s *NotionService) SaveIntegration(ctx context.Context, userID uuid.UUID, t
 		}
 	}
 
+	// Begin db transaction
+	tx, err := s.DBPool.Begin(ctx)
+	if err != nil {
+		logger.With(ctx).Error("failed to begin transaction", zap.Error(err))
+		return models.NotionIntegration{}, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	qtx := s.DB.WithTx(tx)
+
 	integrationID := uuid.New()
 
 	integrationParams := models.CreateIntegrationParams{
@@ -160,7 +172,8 @@ func (s *NotionService) SaveIntegration(ctx context.Context, userID uuid.UUID, t
 		ExpiresAt:    pgtype.Timestamptz{}, // not used
 	}
 
-	_, dbErr := s.DB.CreateIntegration(ctx, integrationParams)
+	// Create integration record
+	_, dbErr := qtx.CreateIntegration(ctx, integrationParams)
 	if dbErr != nil {
 		logger.With(ctx).Error("CreateIntegration query failed", zap.Error(err))
 		return models.NotionIntegration{}, fmt.Errorf("failed to create new integrations for user %s: %w", userID, err)
@@ -172,7 +185,8 @@ func (s *NotionService) SaveIntegration(ctx context.Context, userID uuid.UUID, t
 		return models.NotionIntegration{}, err
 	}
 
-	notionIntegration, err := s.DB.CreateNotionIntegration(ctx, models.CreateNotionIntegrationParams{
+	// Save notion integration
+	notionIntegration, err := qtx.CreateNotionIntegration(ctx, models.CreateNotionIntegrationParams{
 		ID:               uuid.New(),
 		IntegrationID:    integrationID,
 		WorkspaceID:      token.WorkspaceID,
@@ -188,6 +202,12 @@ func (s *NotionService) SaveIntegration(ctx context.Context, userID uuid.UUID, t
 	if err != nil {
 		logger.With(ctx).Error("CreateNotionIntegration failed", zap.Error(err))
 		return models.NotionIntegration{}, fmt.Errorf("failed to save Notion metadata: %w", err)
+	}
+
+	//  Commit transaction
+	if err := tx.Commit(ctx); err != nil {
+		logger.With(ctx).Error("Transaction commit failed", zap.Error(err))
+		return models.NotionIntegration{}, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	str := fmt.Sprintf("new notion integration added for user %s", userID.String())
@@ -216,7 +236,6 @@ func (s *NotionService) isAccessTokenValid(ctx context.Context, accessToken stri
 }
 
 func (s *NotionService) CreatePetrelDraftsRepo(ctx context.Context, accessToken string) (string, error) {
-
 	createReq := &notionapi.PageCreateRequest{
 		Parent: notionapi.Parent{
 			Type:      notionapi.ParentTypeWorkspace,
@@ -234,6 +253,7 @@ func (s *NotionService) CreatePetrelDraftsRepo(ctx context.Context, accessToken 
 			},
 		},
 		Children: []notionapi.Block{
+			// Intro message
 			&notionapi.ParagraphBlock{
 				BasicBlock: notionapi.BasicBlock{
 					Object: notionapi.ObjectTypeBlock,
@@ -244,6 +264,26 @@ func (s *NotionService) CreatePetrelDraftsRepo(ctx context.Context, accessToken 
 						{
 							Text: &notionapi.Text{
 								Content: "This is your Petrel-managed drafts repository. All unpublished AI content lives here.",
+							},
+						},
+					},
+				},
+			},
+			// Deletion warning
+			&notionapi.ParagraphBlock{
+				BasicBlock: notionapi.BasicBlock{
+					Object: notionapi.ObjectTypeBlock,
+					Type:   notionapi.BlockTypeParagraph,
+				},
+				Paragraph: notionapi.Paragraph{
+					RichText: []notionapi.RichText{
+						{
+							Annotations: &notionapi.Annotations{
+								Bold:  true,
+								Color: notionapi.ColorRed,
+							},
+							Text: &notionapi.Text{
+								Content: "⚠️ Warning: Do not delete this page. Petrel uses it to manage your AI-generated drafts.",
 							},
 						},
 					},
