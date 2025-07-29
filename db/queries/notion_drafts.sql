@@ -51,3 +51,11 @@ SET published_page_id = $1,
     status = 'published',
     updated_at = now()
 WHERE id = $2;
+
+-- name: IsValidNotionDraftPage :one
+SELECT EXISTS (
+    SELECT 1 FROM notion_drafts
+    WHERE user_id = $1
+      AND notion_page_id = $2
+      AND status = 'draft'
+);

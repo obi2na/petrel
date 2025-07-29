@@ -47,3 +47,9 @@ WHERE drafts_page_id = $3;
 SELECT * FROM notion_integrations
 WHERE last_validated_at IS NULL
    OR last_validated_at < now() - interval '1 day';
+
+-- name: GetNotionIntegrationByUserAndWorkspace :one
+SELECT ni.*
+FROM notion_integrations ni
+         JOIN integrations i ON ni.integration_id = i.id
+WHERE i.user_id = $1 AND ni.workspace_id = $2;

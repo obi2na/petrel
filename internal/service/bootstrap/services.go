@@ -29,7 +29,7 @@ func NewServiceContainer(db *pgxpool.Pool, cache utils.Cache) *ServiceContainer 
 	authSvc := authService.NewAuthService(config.C.Auth0, httpClient, userSvc)
 	notionOauthSvc := notion.NewNotionOAuthService(httpClient)
 	notionSvc := notion.NewNotionService(db, httpClient, utils.NewJomeiClient())
-	manuscriptSvc := manuscript.NewManuscriptService()
+	manuscriptSvc := manuscript.NewManuscriptService(notionSvc)
 
 	return &ServiceContainer{
 		UserSvc:        userSvc,

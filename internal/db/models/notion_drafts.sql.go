@@ -112,6 +112,27 @@ func (q *Queries) GetNotionDraftByPageID(ctx context.Context, notionPageID strin
 	return i, err
 }
 
+const isValidNotionDraftPage = `-- name: IsValidNotionDraftPage :one
+SELECT EXISTS (
+    SELECT 1 FROM notion_drafts
+    WHERE user_id = $1
+      AND notion_page_id = $2
+      AND status = 'draft'
+)
+`
+
+type IsValidNotionDraftPageParams struct {
+	UserID       uuid.UUID `json:"user_id"`
+	NotionPageID string    `json:"notion_page_id"`
+}
+
+func (q *Queries) IsValidNotionDraftPage(ctx context.Context, arg IsValidNotionDraftPageParams) (bool, error) {
+	row := q.db.QueryRow(ctx, isValidNotionDraftPage, arg.UserID, arg.NotionPageID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const listNotionDraftsForUser = `-- name: ListNotionDraftsForUser :many
 SELECT id, user_id, notion_integration_id, notion_page_id, published_page_id, title, status, is_orphaned, created_at, updated_at FROM notion_drafts
 WHERE user_id = $1

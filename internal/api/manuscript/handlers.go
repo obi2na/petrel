@@ -53,7 +53,7 @@ func (h *ManuscriptHandler) CreateDraft(c *gin.Context) {
 	}
 
 	// TODO: finish implementing service
-	resp, err := h.Service.CreateDraft(ctx, userID, req)
+	resp, err := h.Service.StageDraft(ctx, userID, req)
 	if err != nil {
 		logger.With(ctx).Error("failed to create draft", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create draft", "details": err.Error()})

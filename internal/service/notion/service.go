@@ -3,8 +3,10 @@ package notion
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jomei/notionapi"
@@ -110,6 +112,8 @@ func (n *NotionOAuthService) ExchangeCodeForToken(ctx context.Context, params ut
 type Service interface {
 	SaveIntegration(ctx context.Context, userID uuid.UUID, token *NotionTokenResponse) (models.NotionIntegration, error)
 	CreatePetrelDraftsRepo(ctx context.Context, accessToken string) (string, error)
+	UserHasWorkspace(ctx context.Context, userID uuid.UUID, workspaceID string) (bool, error)
+	IsValidDraftPage(ctx context.Context, userID uuid.UUID, pageID string) (bool, error)
 }
 
 type NotionService struct {
@@ -300,4 +304,30 @@ func (s *NotionService) CreatePetrelDraftsRepo(ctx context.Context, accessToken 
 
 	logger.With(ctx).Info("Petrel Drafts Repo created", zap.String("page_id", page.ID.String()))
 	return page.ID.String(), nil
+}
+
+func (s *NotionService) UserHasWorkspace(ctx context.Context, userID uuid.UUID, workspaceID string) (bool, error) {
+
+	integration, err := s.DB.GetNotionIntegrationByUserAndWorkspace(ctx, models.GetNotionIntegrationByUserAndWorkspaceParams{
+		UserID:      pgtype.UUID{Bytes: userID, Valid: true},
+		WorkspaceID: workspaceID,
+	})
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		logger.With(ctx).Error("DB error checking workspace access", zap.Error(err))
+		return false, err
+	}
+
+	return integration.ID != uuid.Nil, nil
+}
+
+func (s *NotionService) IsValidDraftPage(ctx context.Context, userID uuid.UUID, pageID string) (bool, error) {
+	validNotionDraftPageParams := models.IsValidNotionDraftPageParams{
+		UserID:       userID,
+		NotionPageID: pageID,
+	}
+	return s.DB.IsValidNotionDraftPage(ctx, validNotionDraftPageParams)
 }

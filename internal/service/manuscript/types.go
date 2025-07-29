@@ -14,8 +14,7 @@ type DraftMetadata struct {
 
 type DraftDestination struct {
 	Platform    string `json:"platform" binding:"required"` // e.g "notion", "confluence"
-	WorkspaceID string `json:"workspace_id,omitempty"`      // for notion
-	SpaceKey    string `json:"space_key,omitempty"`         // for confluence
+	WorkspaceID string `json:"workspace_id,omitempty"`      // for notion, reuse for confluence
 	Append      bool   `json:"append,omitempty"`            // append to existing page or create new page
 	PageID      string `json:"page_id,omitempty"`           // required if append==true
 }
@@ -29,7 +28,6 @@ type DraftResultEntry struct {
 	DraftID      string `json:"draft_id"`
 	Platform     string `json:"platform"`               // e.g. "notion", "confluence"
 	WorkspaceID  string `json:"workspace_id,omitempty"` // notion workspace or team id
-	SpaceKey     string `json:"space_key,omitempty"`    // for confluence
 	PageID       string `json:"page_id"`                // internal page ID
 	URL          string `json:"url"`                    // public-facing or redirect-safe URL
 	Status       string `json:"status"`                 // e.g. "draft"
