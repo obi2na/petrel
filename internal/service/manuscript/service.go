@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/obi2na/petrel/internal/logger"
+	utils "github.com/obi2na/petrel/internal/pkg"
 	"github.com/obi2na/petrel/internal/service/notion"
 	"go.uber.org/zap"
 	"strings"
@@ -31,8 +32,9 @@ type WorkspaceValidator interface {
 // designed to remain platform-agnostic while enforcing high-level rules and workflows.
 type ManuscriptService struct {
 	// TODO: add dependencies like NotionClient, ConfluenceClient, DB, MarkdownParser etc
-	NotionSvc             notion.DatabaseService
+	NotionDbSvc           notion.DatabaseService
 	WorkspaceValidatorMap map[string]WorkspaceValidator
+	Parser                utils.Parser
 }
 
 func NewManuscriptService(notionSvc notion.DatabaseService) *ManuscriptService {
@@ -43,12 +45,13 @@ func NewManuscriptService(notionSvc notion.DatabaseService) *ManuscriptService {
 
 	return &ManuscriptService{
 		// dependencies injected here
-		NotionSvc:             notionSvc,
+		NotionDbSvc:           notionSvc,
 		WorkspaceValidatorMap: validatorMap,
+		Parser:                utils.NewDefaultMarkdownParser(),
 	}
 }
 
-func (s *ManuscriptService) destinationsAreValid(ctx context.Context, userID uuid.UUID, destinations []DraftDestination) []string {
+func (s *ManuscriptService) validateDestinations(ctx context.Context, userID uuid.UUID, destinations []DraftDestination) []string {
 	var validationErrs []string
 
 	for _, destination := range destinations {
@@ -84,7 +87,7 @@ func (s *ManuscriptService) destinationsAreValid(ctx context.Context, userID uui
 				continue
 			}
 
-			exists, err := s.NotionSvc.IsValidDraftPage(ctx, userID, destination.PageID)
+			exists, err := s.NotionDbSvc.IsValidDraftPage(ctx, userID, destination.PageID)
 			if err != nil {
 				errStr := fmt.Sprintf("could not validate page_id %s for %s: %v", destination.PageID, destination.Platform, err)
 				logger.With(ctx).Error(errStr)
@@ -104,7 +107,7 @@ func (s *ManuscriptService) destinationsAreValid(ctx context.Context, userID uui
 
 func (s *ManuscriptService) StageDraft(ctx context.Context, userID uuid.UUID, req CreateDraftRequest) (CreateDraftResponse, error) {
 	// 1. Validate destinations
-	validationErrors := s.destinationsAreValid(ctx, userID, req.Destinations)
+	validationErrors := s.validateDestinations(ctx, userID, req.Destinations)
 	if len(validationErrors) > 0 {
 		// Combine all validation messages into one error
 		errMsg := fmt.Sprintf("destination validation failed:\n- %s", strings.Join(validationErrors, "\n- "))
@@ -115,13 +118,22 @@ func (s *ManuscriptService) StageDraft(ctx context.Context, userID uuid.UUID, re
 		}, fmt.Errorf(errMsg)
 	}
 
-	// 2. Proceed with markdown processing and destination publishing (placeholder)
-	logger.With(ctx).Info("Manuscript Service passed validation")
-
 	// TODO: 2. Parse markdown into AST
+	_, err := s.Parser.Parse(req.Markdown)
+	if err != nil {
+		err = fmt.Errorf("markdown invalid: %w", err)
+		logger.With(ctx).Error("markdown validation failed", zap.Error(err))
+		return CreateDraftResponse{
+			Status: "fail",
+			Drafts: []DraftResultEntry{}, // No drafts created
+		}, err
+	}
+
 	// TODO: 3. Route draft to each platform's DraftService (e.g. NotionDraftService.StageDraft)
 	// TODO: 4. Collect DraftResultEntry per platform
 	// TODO: 5. Return combined CreateDraftResponse
+
+	logger.With(ctx).Info("Manuscript Service passed validation")
 
 	// Example placeholder success response
 	response := CreateDraftResponse{
