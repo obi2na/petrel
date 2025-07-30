@@ -23,11 +23,10 @@ func RegisterRoutes(r *gin.Engine, services *bootstrap.ServiceContainer) {
 	auth.RegisterAuthRoutes(authGroup, services.AuthSvc)
 
 	// register notion services
-	notionOauthSvc := services.NotionOauthSvc
-	notionSvc := services.NotionSvc
+	notionIntegrationService := services.NotionIntegrationService
 	notionGroup := r.Group("/notion")
 	notionGroup.Use(middleware.AuthMiddleware(services.UserSvc))
-	notion.RegisterNotionRoutes(notionGroup, notionOauthSvc, notionSvc)
+	notion.RegisterNotionRoutes(notionGroup, notionIntegrationService)
 
 	// register manuscript routes
 	manuscriptGroup := r.Group("/manuscript")

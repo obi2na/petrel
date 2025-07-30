@@ -31,11 +31,11 @@ type WorkspaceValidator interface {
 // designed to remain platform-agnostic while enforcing high-level rules and workflows.
 type ManuscriptService struct {
 	// TODO: add dependencies like NotionClient, ConfluenceClient, DB, MarkdownParser etc
-	NotionSvc             notion.Service
+	NotionSvc             notion.DatabaseService
 	WorkspaceValidatorMap map[string]WorkspaceValidator
 }
 
-func NewManuscriptService(notionSvc notion.Service) *ManuscriptService {
+func NewManuscriptService(notionSvc notion.DatabaseService) *ManuscriptService {
 
 	validatorMap := map[string]WorkspaceValidator{
 		"notion": notionSvc,

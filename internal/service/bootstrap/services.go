@@ -13,11 +13,12 @@ import (
 )
 
 type ServiceContainer struct {
-	UserSvc        userservice.Service
-	AuthSvc        authService.AuthService
-	NotionOauthSvc utils.OAuthService[notion.NotionTokenResponse]
-	NotionSvc      notion.Service
-	ManuscriptSvc  manuscript.Service
+	UserSvc                  userservice.Service
+	AuthSvc                  authService.AuthService
+	NotionOauthSvc           utils.OAuthService[notion.NotionTokenResponse]
+	NotionDBSvc              notion.DatabaseService
+	NotionIntegrationService notion.IntegrationService
+	ManuscriptSvc            manuscript.Service
 }
 
 func NewServiceContainer(db *pgxpool.Pool, cache utils.Cache) *ServiceContainer {
@@ -28,14 +29,16 @@ func NewServiceContainer(db *pgxpool.Pool, cache utils.Cache) *ServiceContainer 
 	userSvc := userservice.NewUserService(db, cache, utils.NewJWTProvider())
 	authSvc := authService.NewAuthService(config.C.Auth0, httpClient, userSvc)
 	notionOauthSvc := notion.NewNotionOAuthService(httpClient)
-	notionSvc := notion.NewNotionService(db, httpClient, utils.NewJomeiClient())
-	manuscriptSvc := manuscript.NewManuscriptService(notionSvc)
+	notionDbSvc := notion.NewNotionDatabaseService(db, httpClient, utils.NewJomeiClient())
+	manuscriptSvc := manuscript.NewManuscriptService(notionDbSvc)
+	notionIntegrationService := notion.NewIntegrationService(notionOauthSvc, notionDbSvc, utils.NewJWTProvider())
 
 	return &ServiceContainer{
-		UserSvc:        userSvc,
-		AuthSvc:        authSvc,
-		NotionOauthSvc: notionOauthSvc,
-		NotionSvc:      notionSvc,
-		ManuscriptSvc:  manuscriptSvc,
+		UserSvc:                  userSvc,
+		AuthSvc:                  authSvc,
+		NotionOauthSvc:           notionOauthSvc,
+		NotionDBSvc:              notionDbSvc,
+		ManuscriptSvc:            manuscriptSvc,
+		NotionIntegrationService: notionIntegrationService,
 	}
 }

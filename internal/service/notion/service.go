@@ -54,6 +54,7 @@ type Person struct {
 	Email string `json:"email"`
 }
 
+// -----  notion oauth service begins here
 type NotionOAuthService struct {
 	httpClient utils.HTTPClient
 }
@@ -74,6 +75,7 @@ func (n *NotionOAuthService) GetAuthURL(state string) string {
 }
 
 func (n *NotionOAuthService) ExchangeCodeForToken(ctx context.Context, params utils.TokenRequestParams) (*NotionTokenResponse, error) {
+	logger.With(ctx).Info("starting token exchange")
 	data := url.Values{}
 	data.Set("grant_type", "authorization_code")
 	data.Set("code", params.Code)
@@ -106,25 +108,30 @@ func (n *NotionOAuthService) ExchangeCodeForToken(ctx context.Context, params ut
 		return nil, err
 	}
 
+	logger.With(ctx).Info("token exchange successful")
 	return &token, nil
 }
 
-type Service interface {
+// -----  notion oauth service ends here
+
+// ---- notion service starts here
+
+type DatabaseService interface {
 	SaveIntegration(ctx context.Context, userID uuid.UUID, token *NotionTokenResponse) (models.NotionIntegration, error)
 	CreatePetrelDraftsRepo(ctx context.Context, accessToken string) (string, error)
 	UserHasWorkspace(ctx context.Context, userID uuid.UUID, workspaceID string) (bool, error)
 	IsValidDraftPage(ctx context.Context, userID uuid.UUID, pageID string) (bool, error)
 }
 
-type NotionService struct {
+type NotionDatabaseService struct {
 	DB           utils.DB
 	DBPool       *pgxpool.Pool
 	HttpClient   utils.HTTPClient
 	NotionClient utils.NotionApiClient
 }
 
-func NewNotionService(pool *pgxpool.Pool, httpClient utils.HTTPClient, notionClient utils.NotionApiClient) *NotionService {
-	return &NotionService{
+func NewNotionDatabaseService(pool *pgxpool.Pool, httpClient utils.HTTPClient, notionClient utils.NotionApiClient) *NotionDatabaseService {
+	return &NotionDatabaseService{
 		DB:           models.New(pool),
 		DBPool:       pool,
 		HttpClient:   httpClient,
@@ -132,7 +139,7 @@ func NewNotionService(pool *pgxpool.Pool, httpClient utils.HTTPClient, notionCli
 	}
 }
 
-func (s *NotionService) SaveIntegration(ctx context.Context, userID uuid.UUID, token *NotionTokenResponse) (models.NotionIntegration, error) {
+func (s *NotionDatabaseService) SaveIntegration(ctx context.Context, userID uuid.UUID, token *NotionTokenResponse) (models.NotionIntegration, error) {
 
 	// Lookup all notion integrations for user
 	integrations, err := s.DB.GetNotionIntegrationsForUser(ctx, pgtype.UUID{userID, true})
@@ -220,7 +227,7 @@ func (s *NotionService) SaveIntegration(ctx context.Context, userID uuid.UUID, t
 	return notionIntegration, nil
 }
 
-func (s *NotionService) isAccessTokenValid(ctx context.Context, accessToken string) bool {
+func (s *NotionDatabaseService) isAccessTokenValid(ctx context.Context, accessToken string) bool {
 	logger.With(ctx).Info("checking token health")
 	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.notion.com/v1/users/me", nil)
 	if err != nil {
@@ -239,7 +246,7 @@ func (s *NotionService) isAccessTokenValid(ctx context.Context, accessToken stri
 	return false
 }
 
-func (s *NotionService) CreatePetrelDraftsRepo(ctx context.Context, accessToken string) (string, error) {
+func (s *NotionDatabaseService) CreatePetrelDraftsRepo(ctx context.Context, accessToken string) (string, error) {
 	createReq := &notionapi.PageCreateRequest{
 		Parent: notionapi.Parent{
 			Type:      notionapi.ParentTypeWorkspace,
@@ -306,7 +313,7 @@ func (s *NotionService) CreatePetrelDraftsRepo(ctx context.Context, accessToken 
 	return page.ID.String(), nil
 }
 
-func (s *NotionService) UserHasWorkspace(ctx context.Context, userID uuid.UUID, workspaceID string) (bool, error) {
+func (s *NotionDatabaseService) UserHasWorkspace(ctx context.Context, userID uuid.UUID, workspaceID string) (bool, error) {
 
 	integration, err := s.DB.GetNotionIntegrationByUserAndWorkspace(ctx, models.GetNotionIntegrationByUserAndWorkspaceParams{
 		UserID:      pgtype.UUID{Bytes: userID, Valid: true},
@@ -324,10 +331,88 @@ func (s *NotionService) UserHasWorkspace(ctx context.Context, userID uuid.UUID, 
 	return integration.ID != uuid.Nil, nil
 }
 
-func (s *NotionService) IsValidDraftPage(ctx context.Context, userID uuid.UUID, pageID string) (bool, error) {
+func (s *NotionDatabaseService) IsValidDraftPage(ctx context.Context, userID uuid.UUID, pageID string) (bool, error) {
 	validNotionDraftPageParams := models.IsValidNotionDraftPageParams{
 		UserID:       userID,
 		NotionPageID: pageID,
 	}
 	return s.DB.IsValidNotionDraftPage(ctx, validNotionDraftPageParams)
 }
+
+// notion service ends here
+
+// Notion Integration Service Starts Here
+
+type IntegrationService interface {
+	CompleteOAuth(ctx context.Context, code, state string, userID uuid.UUID) (models.NotionIntegration, error)
+	StartOauth(ctx context.Context) (string, error)
+}
+
+// ----------------------------------------
+//
+//	NotionIntegrationService
+//	Responsible for coordinating the full
+//	integration lifecycle:
+//	- validate state
+//	- exchange token
+//	- save metadata
+//	- return enriched response
+//
+// -----------------------------------------
+type NotionIntegrationService[T any] struct {
+	NotionDBSvc  DatabaseService
+	JWTManager   utils.JWTManager
+	OAuthService utils.OAuthService[T]
+}
+
+func NewIntegrationService[T NotionTokenResponse](oauthSvc utils.OAuthService[T], notionDBSvc DatabaseService, jwt utils.JWTManager) *NotionIntegrationService[T] {
+	return &NotionIntegrationService[T]{
+		OAuthService: oauthSvc,
+		NotionDBSvc:  notionDBSvc,
+		JWTManager:   jwt,
+	}
+}
+
+func (s *NotionIntegrationService[T]) StartOauth(ctx context.Context) (string, error) {
+
+	state, err := s.JWTManager.GenerateStateJWT(config.C.Notion.StateSecret)
+	if err != nil {
+		logger.With(ctx).Error("Failed to generate JWT state", zap.Error(err))
+
+		return "", err
+	}
+
+	return s.OAuthService.GetAuthURL(state), nil
+}
+
+func (s *NotionIntegrationService[T]) CompleteOAuth(ctx context.Context, code, state string, userID uuid.UUID) (models.NotionIntegration, error) {
+	// 1. Validate the state token
+	logger.With(ctx).Debug("validating notion state jwt")
+	if err := s.JWTManager.ValidateStateJWT(state, config.C.Notion.StateSecret); err != nil {
+		logger.With(ctx).Warn("Token state validation failed", zap.Error(err))
+		return models.NotionIntegration{}, fmt.Errorf("invalid state: %w", err)
+	}
+	logger.With(ctx).Debug("notion state jwt validation successful")
+
+	// 2. Exchange code for token
+	token, err := s.OAuthService.ExchangeCodeForToken(ctx, utils.TokenRequestParams{
+		Code:        code,
+		RedirectURI: config.C.Notion.RedirectURI,
+	})
+	if err != nil {
+		logger.With(ctx).Warn("Token exchange failed", zap.Error(err))
+		return models.NotionIntegration{}, fmt.Errorf("token exchange failed: %w", err)
+	}
+
+	//cast to Notion Tokens
+	notionToken, ok := any(token).(*NotionTokenResponse)
+	if !ok {
+		logger.With(ctx).Error("token type mismatch")
+		return models.NotionIntegration{}, errors.New("token type mismatch")
+	}
+
+	// 3. Save to DB
+	return s.NotionDBSvc.SaveIntegration(ctx, userID, notionToken)
+}
+
+// Notion Integration Service ends here

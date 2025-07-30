@@ -143,6 +143,7 @@ func (s *Auth0Service) CompleteMagicLink(ctx context.Context, code, state string
 }
 
 func (s *Auth0Service) ExchangeCodeForToken(ctx context.Context, code string) (*TokenResponse, error) {
+	logger.With(ctx).Debug("Exchanging code for notion token")
 	data := map[string]string{
 		"grant_type":    "authorization_code",
 		"client_id":     s.ClientID,
@@ -168,9 +169,11 @@ func (s *Auth0Service) ExchangeCodeForToken(ctx context.Context, code string) (*
 		logger.With(ctx).Error("auth0 token exchange failed", zap.Error(err))
 		return nil, fmt.Errorf("auth0 token exchange failed: %s", body)
 	}
+	logger.With(ctx).Info("Code exchange for notion token successful")
 
 	var tokenResp TokenResponse
 	if err := json.Unmarshal(body, &tokenResp); err != nil {
+		logger.With(ctx).Error("notion token response unmarshalling failed", zap.Error(err))
 		return nil, err
 	}
 	return &tokenResp, nil

@@ -6,10 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"github.com/dgraph-io/ristretto"
+	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jomei/notionapi"
 	"github.com/obi2na/petrel/internal/db/models"
+	"github.com/obi2na/petrel/internal/logger"
+	"go.uber.org/zap"
 	"net/http"
 	"strings"
 	"sync"
@@ -315,6 +319,40 @@ func (j *JomeiClient) CreatePage(ctx context.Context, token string, req *notiona
 func BuildNotionDraftRepoUrl(pageID string) string {
 	return "https://www.notion.so/" + strings.ReplaceAll(pageID, "-", "")
 }
+
+// extract user id from gin context
+
+var (
+	ErrUserIDNotFound = errors.New("user ID not found in context")
+	ErrUserIDInvalid  = errors.New("invalid user ID format")
+)
+
+// ExtractUserID retrieves the authenticated user ID from the Gin context.
+func ExtractUserID(c *gin.Context) (uuid.UUID, error) {
+	userIDRaw, exists := c.Get("user_id")
+	if !exists {
+		return uuid.Nil, ErrUserIDNotFound
+	}
+	userID, ok := userIDRaw.(uuid.UUID)
+	if !ok {
+		return uuid.Nil, ErrUserIDInvalid
+	}
+	return userID, nil
+}
+
+// Responds with JSON error and halts if user ID is invalid
+func MustGetUserID(c *gin.Context) (uuid.UUID, bool) {
+	ctx := c.Request.Context()
+	userID, err := ExtractUserID(c)
+	if err != nil {
+		logger.With(ctx).Error("error extracting user_id from context", zap.Error(err))
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return uuid.Nil, false
+	}
+	return userID, true
+}
+
+// end
 
 // ------ Notion Api Client starts -------------
 
