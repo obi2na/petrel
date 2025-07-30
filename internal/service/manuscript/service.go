@@ -35,6 +35,7 @@ type ManuscriptService struct {
 	NotionDbSvc           notion.DatabaseService
 	WorkspaceValidatorMap map[string]WorkspaceValidator
 	Parser                utils.Parser
+	Linter                utils.MarkdownLinter
 }
 
 func NewManuscriptService(notionSvc notion.DatabaseService) *ManuscriptService {
@@ -48,6 +49,7 @@ func NewManuscriptService(notionSvc notion.DatabaseService) *ManuscriptService {
 		NotionDbSvc:           notionSvc,
 		WorkspaceValidatorMap: validatorMap,
 		Parser:                utils.NewDefaultMarkdownParser(),
+		Linter:                utils.NewPetrelMarkdownLinter(),
 	}
 }
 
@@ -119,7 +121,7 @@ func (s *ManuscriptService) StageDraft(ctx context.Context, userID uuid.UUID, re
 	}
 
 	// TODO: 2. Parse markdown into AST
-	_, err := s.Parser.Parse(req.Markdown)
+	doc, err := s.Parser.Parse(req.Markdown)
 	if err != nil {
 		err = fmt.Errorf("markdown invalid: %w", err)
 		logger.With(ctx).Error("markdown validation failed", zap.Error(err))
@@ -128,6 +130,9 @@ func (s *ManuscriptService) StageDraft(ctx context.Context, userID uuid.UUID, re
 			Drafts: []DraftResultEntry{}, // No drafts created
 		}, err
 	}
+
+	// Walk AST and collect warnings
+	lintWarnings, err := s.Linter.Lint(doc, []byte(req.Markdown))
 
 	// TODO: 3. Route draft to each platform's DraftService (e.g. NotionDraftService.StageDraft)
 	// TODO: 4. Collect DraftResultEntry per platform
@@ -140,13 +145,14 @@ func (s *ManuscriptService) StageDraft(ctx context.Context, userID uuid.UUID, re
 		Status: "success",
 		Drafts: []DraftResultEntry{
 			{
-				DraftID:     uuid.New().String(),
-				Platform:    "notion",
-				WorkspaceID: req.Destinations[0].WorkspaceID,
-				PageID:      "mock-page-id",
-				URL:         "https://notion.so/mock-page-id",
-				Status:      "draft",
-				Action:      "created",
+				DraftID:      uuid.New().String(),
+				Platform:     "notion",
+				WorkspaceID:  req.Destinations[0].WorkspaceID,
+				PageID:       "mock-page-id",
+				URL:          "https://notion.so/mock-page-id",
+				Status:       "draft",
+				Action:       "created",
+				LintWarnings: lintWarnings,
 			},
 		},
 	}
