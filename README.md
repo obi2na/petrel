@@ -1,102 +1,94 @@
-# 🐦 Petrel
+# 🐧 Petrel – The Control Plane for AI-Generated Content
 
-**Petrel is the control plane for AI-generated content.**  
-Publish it. Approve it. Version it. Route it. Govern it.
-
----
-
-## ✨ What is Petrel?
-
-Petrel is a universal publishing and orchestration platform for AI-generated content.  
-It connects your AI tools — like ChatGPT, Claude, or custom LLM agents — to your team’s tools like **Notion, Confluence, GitHub, and Slack**, with built-in **version control, approval workflows, and smart routing**.
-
-Whether you're generating docs, changelogs, meeting summaries, support macros, or marketing copy, Petrel helps automate the publishing pipeline while keeping humans in control.
+**Petrel** helps non-technical teams adopt generative AI safely, collaboratively, and at scale.  
+It connects AI agents (like GPT, Claude, or your own internal models) to your publishing destinations (Notion, Confluence, Slack, GitHub, etc.) and adds the structure, transparency, and governance that real teams need.
 
 ---
 
-## 🔧 Key Features (MVP)
+## ✨ Key Features
 
-- 📤 **Universal Publishing API**  
-  Publish AI-generated markdown to Notion, Confluence, Slack, GitHub, and more — with formatting preserved.
+- 🧩 **AI Agent Marketplace**  
+  Subscribe to GPT or Claude, or bring your own AI agents (including AnythingLLM and Palmyra).
 
-- 🧠 **Version Control for AI Content**  
-  Every publish is tracked. View diffs, roll back, or republish previous versions.
+- 💬 **Unified Chat + Draft Interface**  
+  Collaborate with AI agents through structured, traceable chat sessions linked to drafts.
 
-- ✅ **Review & Approval Workflows**  
-  Route drafts to human reviewers before they go live. Enforce roles and permissions.
+- 👥 **Multi-User Collaboration**  
+  Multiple teammates can contribute to the same draft using their own AI agents — with separate chat histories, versioned edits, and full traceability.
 
-- 🔁 **Content Routing Engine**  
-  Tag-based and destination-specific logic determines where content goes.
+- 🧠 **Multi-Agent Orchestration**  
+  Use different agents for different tasks — route, combine, and supervise with full control.
 
-- 🧾 **Audit Trail & Activity Logs**  
-  Track which agent (or human) created, reviewed, or published every version.
+- 🔁 **Review & Approval Workflows**  
+  Enforce human-in-the-loop content review before publishing. No more unreviewed AI content.
 
----
+- 📄 **Chat-to-Draft Audit Trail**  
+  Every draft is traceable to its prompts, contributors, and agents used.
 
-## 🧩 Coming Soon
+- 📜 **Version Control**  
+  Track every change, compare versions, and revert with confidence.
 
-- 🤖 **Multi-Agent Orchestration**  
-  Chain AI agents together: e.g. *Claude → GPT-4 → Legal Review → Publish*.
+- 📤 **Structured Publishing Destinations**  
+  Publish AI-generated content directly to Notion, Confluence, Slack, GitHub, and more — with tagging and routing logic.
 
-- 📊 **Agent Performance Metrics**  
-  Monitor output quality across agents. Identify failure points and review bottlenecks.
-
-- 🛍️ **Hosted Agent Marketplace**  
-  Subscribe to hosted agents (GPT-4, Claude, OSS models) with billing, usage limits, and no setup required.
-
-- 🧠 **Custom Agent SDK**  
-  Define your own agents via a unified contract. Plug in models like Mistral, LangChain, or internal tools.
+- 🔒 **Enterprise-Ready**  
+  Self-host in your own VPC. You own your keys, your data, your agents.
 
 ---
 
-## 🔐 Security & Architecture
+## 🧠 Why Petrel?
 
-### ⚙️ Core Platform
+Most teams use AI through tools like ChatGPT, Claude, or Writer — but they:
+- Copy/paste content across apps
+- Lack version control or approval gates
+- Have no audit trail for what AI said or did
+- Struggle to manage AI adoption at scale
 
-- 🛡️ **OAuth 2.0 Integration**  
-  Secure authorization with Notion and Confluence. Tokens stored per user.
+**Petrel solves all of this.**  
+It's not a chatbot. It’s the system of record and governance for AI-generated content.
 
-- 🔒 **AES-256 Token Encryption**  
-  All access/refresh tokens are encrypted before being stored. Keys are managed using **Google Secret Manager**.
-
-- 🧰 **Built with Go (Golang)**
-  - REST API: [Gin](https://github.com/gin-gonic/gin)
-  - Typed SQL: [sqlc](https://github.com/kyleconroy/sqlc)
-  - Logging: [Zap](https://github.com/uber-go/zap)
-  - Config: [Viper](https://github.com/spf13/viper)
-  - Deploy: Docker + Cloud SQL on **Google Cloud Platform**
-
----
-
-### 🧠 Agent-Oriented Architecture (Planned)
-
-- 📦 **Composable Agent Pipelines**  
-  Each AI agent performs one task in a chain — from generation to review to publishing.
-
-- 🔌 **Agent Runtime Interface**  
-  Agents conform to a simple contract (e.g. `Run(ctx, input) → output`) and can be hosted or external.
-
-- 🧠 **Marketplace + Subscriptions**  
-  Built-in catalog of hosted agents. Usage tracking, billing, and access control included.
-
-- 🔒 **Secure Execution + Auditing**  
-  Agents are sandboxed with controlled scopes, and each run is logged with a unique trace ID.
+Built for:
+- Multi-agent workflows
+- Team collaboration across roles
+- Structured, auditable publishing pipelines
 
 ---
 
-## 🚀 Example Use Cases
+## 🛠️ Tech Stack
 
-- Product specs and changelogs → Notion or GitHub
-- Meeting summaries → Confluence or Slack
-- Marketing copy → Webflow or Ghost
-- Support macros → Zendesk or internal KBs
+- **Golang** backend (Gin, sqlc, Zap logger)
+- **PostgreSQL** for core storage
+- **OAuth 2.0** integration for agent access
+- **Pluggable agent interface** (Claude, GPT, AnythingLLM, Palmyra)
+- **Modular deployment** (GCP / VPC / Docker)
 
 ---
 
-## 📌 Project Status
+## 🗺️ Roadmap Highlights
 
-✅ **Phase 1 (MVP)** is actively in development  
-🎯 **Target launch:** December 2025
+- ✅ User auth and integration linking
+- ✅ Notion & Confluence publishing support
+- 🚧 Versioning + chat history audit
+- 🚧 Slack + GitHub destinations
+- 🚧 Agent marketplace UI
+- 🚧 Knowledge base governance layer
+- 🚧 Role-based dashboards (Admin vs Contributor)
+
+---
+
+## 🔐 Security & Compliance
+
+- No API keys stored unless encrypted
+- All AI usage is tied to individual agents, users, and logs
+- Petrel never runs agents on your behalf — you bring your own API keys or VPC-hosted agents
+
+---
+
+## 📣 Status
+
+🛠 Currently in MVP development.  
+📬 Looking for small to mid-sized teams interested in early access or feedback.  
+🌍 Targeting content-heavy, compliance-aware, or AI-adopting teams in media, legal, SaaS, and operations.
 
 ---
 
