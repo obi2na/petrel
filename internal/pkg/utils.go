@@ -361,3 +361,49 @@ type DB interface {
 	models.Querier
 	WithTx(pgx.Tx) *models.Queries
 }
+
+// stack implementation here
+
+type Stack[T any] struct {
+	data []T
+}
+
+func NewStack[T any]() *Stack[T] {
+	return &Stack[T]{
+		data: []T{},
+	}
+}
+
+func (s *Stack[T]) Push(value T) {
+	s.data = append(s.data, value)
+}
+
+func (s *Stack[T]) Pop() (T, bool) {
+	n := len(s.data)
+	var zero T
+	if len(s.data) == 0 {
+		return zero, false
+	}
+	last := s.data[n-1]
+
+	//pop
+	s.data[n-1] = zero // set to zero value
+	s.data = s.data[:n-1]
+
+	return last, true
+}
+
+func (s *Stack[T]) Peek() (T, bool) {
+	if len(s.data) == 0 {
+		var zero T
+		return zero, false
+	}
+	n := len(s.data)
+	return s.data[n-1], true
+}
+
+func (s *Stack[T]) IsEmpty() bool {
+	return len(s.data) == 0
+}
+
+// stack implementation ends here
