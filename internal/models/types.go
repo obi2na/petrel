@@ -1,6 +1,6 @@
-package manuscript
+package petrelmodels
 
-import utils "github.com/obi2na/petrel/internal/pkg"
+import "github.com/obi2na/petrel/internal/pkg"
 
 type CreateDraftRequest struct {
 	Markdown     string             `json:"markdown" binding:"required"`
@@ -36,4 +36,11 @@ type DraftResultEntry struct {
 	Action       string              `json:"action"`                 // e.g. "created", "appended"
 	ErrorMessage string              `json:"error,omitempty"`        // optional field for partial failures
 	LintWarnings []utils.LintWarning `json:"lint_warnings,omitempty"`
+}
+
+type ValidatedDestination struct {
+	Workspace string
+	Token     string
+	Append    bool
+	PageID    string
 }

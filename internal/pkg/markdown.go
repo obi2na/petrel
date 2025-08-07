@@ -3,6 +3,7 @@ package utils
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
@@ -16,7 +17,7 @@ import (
 // ----- Interfaces and Types -----
 
 type Parser interface {
-	Parse(markdown string) (ast.Node, error)
+	Parse(markdown string) (ast.Node, []byte, error)
 }
 
 type DefaultMarkdownParser struct {
@@ -32,16 +33,16 @@ func NewDefaultMarkdownParser() *DefaultMarkdownParser {
 	}
 }
 
-func (p *DefaultMarkdownParser) Parse(markdown string) (ast.Node, error) {
+func (p *DefaultMarkdownParser) Parse(markdown string) (ast.Node, []byte, error) {
 	source := []byte(markdown)
 	reader := text.NewReader(source)
 	node := p.engine.Parser().Parse(reader)
 
 	if node == nil || node.ChildCount() == 0 {
-		return nil, errors.New("invalid or empty markdown")
+		return nil, nil, errors.New("invalid or empty markdown")
 	}
 
-	return node, nil
+	return node, source, nil
 }
 
 type LintWarning struct {
@@ -81,6 +82,30 @@ func (l *PetrelMarkdownLinter) registerRules() {
 	l.ruleMap[reflect.TypeOf(&ast.List{})] = listRules
 	l.ruleMap[reflect.TypeOf(&ast.Text{})] = textRules
 	l.ruleMap[reflect.TypeOf(&ast.Link{})] = linkRules
+}
+
+func extractHeadings(doc ast.Node, source []byte) {
+	switch node := doc.(type) {
+	case *ast.Document:
+		fmt.Println("Document node found")
+
+		for n := node.FirstChild(); n != nil; n = n.NextSibling() {
+			if heading, ok := n.(*ast.Heading); ok {
+				fmt.Println("Heading found")
+				var headingText strings.Builder
+
+				// Case 2: Use inline child nodes (formatted heading)
+				for c := heading.FirstChild(); c != nil; c = c.NextSibling() {
+					switch t := c.(type) {
+					case *ast.Text:
+						headingText.Write(t.Segment.Value(source))
+					}
+				}
+
+				fmt.Printf("Heading (level %d): %s\n", heading.Level, headingText.String())
+			}
+		}
+	}
 }
 
 func (l *PetrelMarkdownLinter) Lint(doc ast.Node, source []byte) ([]LintWarning, error) {

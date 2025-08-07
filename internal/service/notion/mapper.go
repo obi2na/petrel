@@ -85,13 +85,15 @@ func NewPetrelMarkdownToNotionMapper() *PetrelMarkdownToNotionMapper {
 	}
 }
 
-func (p *PetrelMarkdownToNotionMapper) registerMappers() {
+func (p *PetrelMarkdownToNotionMapper) RegisterMappers() {
 	// TODO: register mappers here
+	p.mapperMap[reflect.TypeOf(&ast.Document{})] = mapDocument
 	p.mapperMap[reflect.TypeOf(&ast.Heading{})] = mapHeading
 	p.mapperMap[reflect.TypeOf(&ast.Paragraph{})] = mapParagraph
 	p.mapperMap[reflect.TypeOf(&ast.ListItem{})] = mapList
 	p.mapperMap[reflect.TypeOf(&ast.Blockquote{})] = mapQuote
 	p.mapperMap[reflect.TypeOf(&ast.FencedCodeBlock{})] = mapCodeBlock
+	p.mapperMap[reflect.TypeOf(&ast.List{})] = mapDocument
 }
 
 func (p *PetrelMarkdownToNotionMapper) Map(ctx context.Context, doc ast.Node, source []byte) ([]*BlockWithChildren, error) {
@@ -108,7 +110,8 @@ func (p *PetrelMarkdownToNotionMapper) Map(ctx context.Context, doc ast.Node, so
 
 		fn, ok := p.mapperMap[reflect.TypeOf(n)]
 		if !ok {
-			logger.With(ctx).Debug("Unsupported node type", zap.String("node", n.Kind().String()))
+			// Don’t log inline types as unsupported
+			logger.With(ctx).Debug("Unsupported block-level node", zap.String("node", n.Kind().String()))
 			return ast.WalkContinue, nil
 		}
 
@@ -183,6 +186,10 @@ func mapHeading(ctx context.Context, node ast.Node, source []byte, ctxMap *mappi
 	switch heading.Level {
 	case 1:
 		block = &notionapi.Heading1Block{
+			BasicBlock: notionapi.BasicBlock{
+				Type:   notionapi.BlockTypeHeading1,
+				Object: notionapi.ObjectTypeBlock,
+			},
 			Heading1: notionapi.Heading{
 				RichText: []notionapi.RichText{
 					{
@@ -196,6 +203,10 @@ func mapHeading(ctx context.Context, node ast.Node, source []byte, ctxMap *mappi
 		}
 	case 2:
 		block = &notionapi.Heading2Block{
+			BasicBlock: notionapi.BasicBlock{
+				Type:   notionapi.BlockTypeHeading2,
+				Object: notionapi.ObjectTypeBlock,
+			},
 			Heading2: notionapi.Heading{
 				RichText: []notionapi.RichText{
 					{
@@ -209,6 +220,10 @@ func mapHeading(ctx context.Context, node ast.Node, source []byte, ctxMap *mappi
 		}
 	default:
 		block = &notionapi.Heading3Block{
+			BasicBlock: notionapi.BasicBlock{
+				Type:   notionapi.BlockTypeHeading3,
+				Object: notionapi.ObjectTypeBlock,
+			},
 			Heading3: notionapi.Heading{
 				RichText: []notionapi.RichText{
 					{
@@ -230,6 +245,10 @@ func mapParagraph(ctx context.Context, node ast.Node, source []byte, ctxMap *map
 	text := extractText(node, source)
 
 	block := &notionapi.ParagraphBlock{
+		BasicBlock: notionapi.BasicBlock{
+			Object: notionapi.ObjectTypeBlock,
+			Type:   notionapi.BlockTypeParagraph,
+		},
 		Paragraph: notionapi.Paragraph{
 			RichText: []notionapi.RichText{
 				{
@@ -256,6 +275,10 @@ func mapBulletedList(ctx context.Context, node ast.Node, source []byte, ctxMap *
 	text := extractText(item, source)
 
 	block := &notionapi.BulletedListItemBlock{
+		BasicBlock: notionapi.BasicBlock{
+			Object: notionapi.ObjectTypeBlock,
+			Type:   notionapi.BlockTypeBulletedListItem,
+		},
 		BulletedListItem: notionapi.ListItem{
 			RichText: []notionapi.RichText{
 				{
@@ -282,6 +305,10 @@ func mapQuote(ctx context.Context, node ast.Node, source []byte, ctxMap *mapping
 	text := extractText(node, source)
 
 	block := &notionapi.QuoteBlock{
+		BasicBlock: notionapi.BasicBlock{
+			Type:   notionapi.BlockTypeQuote,
+			Object: notionapi.ObjectTypeBlock,
+		},
 		Quote: notionapi.Quote{
 			RichText: []notionapi.RichText{
 				{
@@ -317,7 +344,12 @@ func mapCodeBlock(ctx context.Context, node ast.Node, source []byte, mapCtx *map
 
 	// Create Notion code block
 	block := &BlockWithChildren{
+
 		Block: &notionapi.CodeBlock{
+			BasicBlock: notionapi.BasicBlock{
+				Type:   notionapi.BlockTypeCode,
+				Object: notionapi.ObjectTypeBlock,
+			},
 			Code: notionapi.Code{
 				RichText: []notionapi.RichText{
 					{
@@ -340,13 +372,17 @@ func mapCodeBlock(ctx context.Context, node ast.Node, source []byte, mapCtx *map
 func mapNumberedList(ctx context.Context, node ast.Node, source []byte, ctxMap *mappingContext) error {
 	item, ok := node.(*ast.ListItem)
 	if !ok {
-		err := fmt.Errorf("error casting codeblock to FencedCodeBlock")
+		err := fmt.Errorf("expected *ast.ListItem but got %T", node)
 		logger.With(ctx).Error("casting error", zap.Error(err))
 		return err
 	}
 	text := extractText(item, source)
 
 	block := &notionapi.NumberedListItemBlock{
+		BasicBlock: notionapi.BasicBlock{
+			Object: notionapi.ObjectTypeBlock,
+			Type:   notionapi.BlockTypeNumberedListItem,
+		},
 		NumberedListItem: notionapi.ListItem{
 			RichText: []notionapi.RichText{
 				{
@@ -395,4 +431,9 @@ func mapList(ctx context.Context, node ast.Node, source []byte, ctxMap *mappingC
 		return mapNumberedList(ctx, node, source, ctxMap)
 	}
 	return mapBulletedList(ctx, node, source, ctxMap)
+}
+
+func mapDocument(ctx context.Context, node ast.Node, source []byte, ctxMap *mappingContext) error {
+	// No-op mapper — just ensures children are walked
+	return nil
 }

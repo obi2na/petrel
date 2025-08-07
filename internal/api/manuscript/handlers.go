@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/obi2na/petrel/internal/logger"
+	"github.com/obi2na/petrel/internal/models"
 	"github.com/obi2na/petrel/internal/service/manuscript"
 	"go.uber.org/zap"
 	"net/http"
@@ -45,7 +46,7 @@ func (h *ManuscriptHandler) CreateDraft(c *gin.Context) {
 		return
 	}
 
-	var req manuscript.CreateDraftRequest
+	var req petrelmodels.CreateDraftRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		logger.With(ctx).Error("invalid payload", zap.Error(err))
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload", "details": err.Error()})

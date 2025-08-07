@@ -19,18 +19,26 @@ type ServiceContainer struct {
 	NotionDBSvc              notion.DatabaseService
 	NotionIntegrationService notion.IntegrationService
 	ManuscriptSvc            manuscript.Service
+	NotionDraftSvc           notion.DraftService
 }
 
 func NewServiceContainer(db *pgxpool.Pool, cache utils.Cache) *ServiceContainer {
+
+	// set up service dependencies
 	httpClient := &http.Client{
 		Timeout: 10 * time.Second,
 	}
+	notionApiClient := utils.NewJomeiClient()
+	notionMapper := notion.NewPetrelMarkdownToNotionMapper()
+	notionMapper.RegisterMappers()
 
+	// create service singletons
 	userSvc := userservice.NewUserService(db, cache, utils.NewJWTProvider())
 	authSvc := authService.NewAuthService(config.C.Auth0, httpClient, userSvc)
 	notionOauthSvc := notion.NewNotionOAuthService(httpClient)
-	notionDbSvc := notion.NewNotionDatabaseService(db, httpClient, utils.NewJomeiClient())
-	manuscriptSvc := manuscript.NewManuscriptService(notionDbSvc)
+	notionDbSvc := notion.NewNotionDatabaseService(db, httpClient, notionApiClient)
+	notionDraftSvc := notion.NewNotionDraftService(notionApiClient, notionMapper)
+	manuscriptSvc := manuscript.NewManuscriptService(notionDbSvc, notionDraftSvc)
 	notionIntegrationService := notion.NewIntegrationService(notionOauthSvc, notionDbSvc, utils.NewJWTProvider())
 
 	return &ServiceContainer{
@@ -40,5 +48,6 @@ func NewServiceContainer(db *pgxpool.Pool, cache utils.Cache) *ServiceContainer 
 		NotionDBSvc:              notionDbSvc,
 		ManuscriptSvc:            manuscriptSvc,
 		NotionIntegrationService: notionIntegrationService,
+		NotionDraftSvc:           notionDraftSvc,
 	}
 }

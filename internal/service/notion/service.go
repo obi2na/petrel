@@ -13,7 +13,9 @@ import (
 	"github.com/obi2na/petrel/config"
 	"github.com/obi2na/petrel/internal/db/models"
 	"github.com/obi2na/petrel/internal/logger"
+	petrelmodels "github.com/obi2na/petrel/internal/models"
 	"github.com/obi2na/petrel/internal/pkg"
+	"github.com/yuin/goldmark/ast"
 	"go.uber.org/zap"
 	"io"
 	"net/http"
@@ -119,7 +121,7 @@ func (n *NotionOAuthService) ExchangeCodeForToken(ctx context.Context, params ut
 type DatabaseService interface {
 	SaveIntegration(ctx context.Context, userID uuid.UUID, token *NotionTokenResponse) (models.NotionIntegration, error)
 	CreatePetrelDraftsRepo(ctx context.Context, accessToken string) (string, error)
-	UserHasWorkspace(ctx context.Context, userID uuid.UUID, workspaceID string) (bool, error)
+	UserHasWorkspace(ctx context.Context, userID uuid.UUID, workspaceID string) (string, bool)
 	IsValidDraftPage(ctx context.Context, userID uuid.UUID, pageID string) (bool, error)
 }
 
@@ -313,22 +315,29 @@ func (s *NotionDatabaseService) CreatePetrelDraftsRepo(ctx context.Context, acce
 	return page.ID.String(), nil
 }
 
-func (s *NotionDatabaseService) UserHasWorkspace(ctx context.Context, userID uuid.UUID, workspaceID string) (bool, error) {
+func (s *NotionDatabaseService) GetAccessTokenByUserAndWorkspace(ctx context.Context, userID uuid.UUID, workspaceID string) (string, error) {
+	integration, err := s.DB.GetNotionIntegrationAndTokenByUserAndWorkspace(ctx,
+		models.GetNotionIntegrationAndTokenByUserAndWorkspaceParams{
+			UserID:      pgtype.UUID{Bytes: userID, Valid: true},
+			WorkspaceID: workspaceID,
+		})
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch integration: %w", err)
+	}
+	return integration.AccessToken, nil
+}
 
-	integration, err := s.DB.GetNotionIntegrationByUserAndWorkspace(ctx, models.GetNotionIntegrationByUserAndWorkspaceParams{
-		UserID:      pgtype.UUID{Bytes: userID, Valid: true},
-		WorkspaceID: workspaceID,
-	})
-
+func (s *NotionDatabaseService) UserHasWorkspace(ctx context.Context, userID uuid.UUID, workspaceID string) (string, bool) {
+	token, err := s.GetAccessTokenByUserAndWorkspace(ctx, userID, workspaceID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return false, nil
+			logger.With(ctx).Warn("User does not have access to this workspace", zap.String("workspace_id", workspaceID))
+			return "", false
 		}
-		logger.With(ctx).Error("DB error checking workspace access", zap.Error(err))
-		return false, err
+		logger.With(ctx).Error("DB error while checking workspace access", zap.Error(err))
+		return "", false
 	}
-
-	return integration.ID != uuid.Nil, nil
+	return token, true
 }
 
 func (s *NotionDatabaseService) IsValidDraftPage(ctx context.Context, userID uuid.UUID, pageID string) (bool, error) {
@@ -416,3 +425,124 @@ func (s *NotionIntegrationService[T]) CompleteOAuth(ctx context.Context, code, s
 }
 
 // Notion Integration Service ends here
+
+// Notion Draft Service starts here
+
+type DraftService interface {
+	StageDraft(ctx context.Context, userID uuid.UUID, notionDestinations []petrelmodels.ValidatedDestination, doc ast.Node, source []byte) ([]petrelmodels.DraftResultEntry, error)
+}
+
+type NotionDraftService struct {
+	NotionClient utils.NotionApiClient
+	Mapper       MarkdownToNotionMapper
+}
+
+func NewNotionDraftService(notionClient utils.NotionApiClient, notionMapper *PetrelMarkdownToNotionMapper) *NotionDraftService {
+	return &NotionDraftService{
+		NotionClient: notionClient,
+		Mapper:       notionMapper,
+	}
+}
+
+func (s *NotionDraftService) StageDraft(ctx context.Context, userID uuid.UUID, notionDestinations []petrelmodels.ValidatedDestination,
+	doc ast.Node, source []byte) ([]petrelmodels.DraftResultEntry, error) {
+	var results []petrelmodels.DraftResultEntry
+
+	// Map AST -> Notion blocks
+	blockTree, err := s.Mapper.Map(ctx, doc, source)
+	if err != nil {
+		return nil, err
+	}
+	// Flatten and transform each BlockWithChildren -> []notionapi.Block
+	blocks := flattenBlockTree(blockTree)
+
+	// iterate through notion workspaces
+	for _, dest := range notionDestinations {
+		var page *notionapi.Page
+		var err error
+
+		if dest.Append {
+			// TODO: append blocks to existing page
+		} else {
+			page, err = s.createNewDraftPage(ctx, dest.Token, dest.Workspace, blocks)
+		}
+
+		if err != nil {
+			results = append(results, petrelmodels.DraftResultEntry{
+				Platform:     "notion",
+				WorkspaceID:  dest.Workspace,
+				PageID:       "",
+				Status:       "fail",
+				ErrorMessage: err.Error(),
+			})
+
+			logger.With(ctx).Error("Error pushing to notion", zap.Error(err))
+			return results, err
+		}
+
+		results = append(results, petrelmodels.DraftResultEntry{
+			Platform:     "notion",
+			WorkspaceID:  dest.Workspace,
+			PageID:       page.ID.String(),
+			URL:          page.URL,
+			Status:       "draft",
+			Action:       "created",
+			LintWarnings: nil,
+		})
+	}
+
+	return results, nil
+}
+
+func (s *NotionDraftService) createNewDraftPage(ctx context.Context, token, workspaceID string, children []notionapi.Block) (*notionapi.Page, error) {
+	req := &notionapi.PageCreateRequest{
+		Parent: notionapi.Parent{
+			Type:      notionapi.ParentTypeWorkspace,
+			Workspace: true,
+		},
+		Properties: notionapi.Properties{
+			"title": notionapi.TitleProperty{
+				Title: []notionapi.RichText{
+					{
+						Text: &notionapi.Text{
+							Content: "Draft from Petrel",
+						},
+					},
+				},
+			},
+		},
+		Children: children,
+	}
+	return s.NotionClient.CreatePage(ctx, token, req)
+}
+
+func flattenBlockTree(tree []*BlockWithChildren) []notionapi.Block {
+	var blocks []notionapi.Block
+
+	// walk tree and recursively flatten
+	func(nodes []*BlockWithChildren) {
+		for _, b := range nodes {
+			if len(b.Children) > 0 {
+				setChildren(b.Block, flattenBlockTree(b.Children))
+			}
+			blocks = append(blocks, b.Block)
+		}
+	}(tree)
+
+	return blocks
+}
+
+func setChildren(block notionapi.Block, children []notionapi.Block) {
+	switch b := block.(type) {
+	case *notionapi.ToggleBlock:
+		b.Toggle.Children = children
+	case *notionapi.BulletedListItemBlock:
+		b.BulletedListItem.Children = children
+	case *notionapi.NumberedListItemBlock:
+		b.NumberedListItem.Children = children
+	case *notionapi.QuoteBlock:
+		b.Quote.Children = children
+	}
+}
+
+// Notion Draft Service ends here

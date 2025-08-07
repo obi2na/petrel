@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/obi2na/petrel/internal/logger"
+	"github.com/obi2na/petrel/internal/models"
 	utils "github.com/obi2na/petrel/internal/pkg"
 	"github.com/obi2na/petrel/internal/service/notion"
 	"go.uber.org/zap"
@@ -15,11 +16,11 @@ import (
 //
 
 type Service interface {
-	StageDraft(ctx context.Context, userID uuid.UUID, req CreateDraftRequest) (CreateDraftResponse, error)
+	StageDraft(ctx context.Context, userID uuid.UUID, req petrelmodels.CreateDraftRequest) (petrelmodels.CreateDraftResponse, error)
 }
 
 type WorkspaceValidator interface {
-	UserHasWorkspace(ctx context.Context, userID uuid.UUID, workspaceID string) (bool, error)
+	UserHasWorkspace(ctx context.Context, userID uuid.UUID, workspaceID string) (string, bool)
 }
 
 // The ManuscriptService is responsible for:
@@ -36,13 +37,17 @@ type ManuscriptService struct {
 	WorkspaceValidatorMap map[string]WorkspaceValidator
 	Parser                utils.Parser
 	Linter                utils.MarkdownLinter
+	NotionDraftService    notion.DraftService
 }
 
-func NewManuscriptService(notionSvc notion.DatabaseService) *ManuscriptService {
+func NewManuscriptService(notionSvc *notion.NotionDatabaseService, notionDraftService *notion.NotionDraftService) *ManuscriptService {
 
 	validatorMap := map[string]WorkspaceValidator{
 		"notion": notionSvc,
 	}
+
+	notionMapper := notion.NewPetrelMarkdownToNotionMapper()
+	notionMapper.RegisterMappers()
 
 	return &ManuscriptService{
 		// dependencies injected here
@@ -50,12 +55,15 @@ func NewManuscriptService(notionSvc notion.DatabaseService) *ManuscriptService {
 		WorkspaceValidatorMap: validatorMap,
 		Parser:                utils.NewDefaultMarkdownParser(),
 		Linter:                utils.NewPetrelMarkdownLinter(),
+		NotionDraftService:    notionDraftService,
 	}
 }
 
-func (s *ManuscriptService) validateDestinations(ctx context.Context, userID uuid.UUID, destinations []DraftDestination) []string {
+func (s *ManuscriptService) validateDestinations(ctx context.Context, userID uuid.UUID, destinations []petrelmodels.DraftDestination) (map[string][]petrelmodels.ValidatedDestination, []string) {
 	var validationErrs []string
+	validatedDestinations := make(map[string][]petrelmodels.ValidatedDestination, len(destinations))
 
+	// for each destination in destinations slice
 	for _, destination := range destinations {
 		// 1. Check that platform exists
 		validator, ok := s.WorkspaceValidatorMap[destination.Platform]
@@ -67,13 +75,8 @@ func (s *ManuscriptService) validateDestinations(ctx context.Context, userID uui
 		}
 
 		// 2. Check user has access to workspace
-		valid, err := validator.UserHasWorkspace(ctx, userID, destination.WorkspaceID)
-		if err != nil {
-			logger.With(ctx).Error("error querying database", zap.Error(err))
-			validationErrs = append(validationErrs, fmt.Sprintf("workspace check failed for %s: %v", destination.Platform, err))
-			continue
-		}
-		if !valid {
+		token, ok := validator.UserHasWorkspace(ctx, userID, destination.WorkspaceID)
+		if !ok {
 			errStr := fmt.Sprintf("unauthorized access to %s workspace %s", destination.Platform, destination.WorkspaceID)
 			logger.With(ctx).Error(errStr)
 			validationErrs = append(validationErrs, errStr)
@@ -102,59 +105,68 @@ func (s *ManuscriptService) validateDestinations(ctx context.Context, userID uui
 				validationErrs = append(validationErrs, errStr)
 			}
 		}
+
+		// 4. Add validated destination to the map
+		validated := petrelmodels.ValidatedDestination{
+			Workspace: destination.WorkspaceID,
+			Token:     token,
+		}
+		result := validatedDestinations[destination.Platform]
+		result = append(result, validated)
+		validatedDestinations[destination.Platform] = result
 	}
 
-	return validationErrs
+	return validatedDestinations, validationErrs
 }
 
-func (s *ManuscriptService) StageDraft(ctx context.Context, userID uuid.UUID, req CreateDraftRequest) (CreateDraftResponse, error) {
+func (s *ManuscriptService) StageDraft(ctx context.Context, userID uuid.UUID, req petrelmodels.CreateDraftRequest) (petrelmodels.CreateDraftResponse, error) {
 	// 1. Validate destinations
-	validationErrors := s.validateDestinations(ctx, userID, req.Destinations)
+	validated, validationErrors := s.validateDestinations(ctx, userID, req.Destinations)
 	if len(validationErrors) > 0 {
 		// Combine all validation messages into one error
 		errMsg := fmt.Sprintf("destination validation failed:\n- %s", strings.Join(validationErrors, "\n- "))
 		logger.With(ctx).Error("Validation failed", zap.Strings("errors", validationErrors))
-		return CreateDraftResponse{
+		return petrelmodels.CreateDraftResponse{
 			Status: "fail",
-			Drafts: []DraftResultEntry{}, // No drafts created
+			Drafts: []petrelmodels.DraftResultEntry{}, // No drafts created
 		}, fmt.Errorf(errMsg)
 	}
 
 	// TODO: 2. Parse markdown into AST
-	doc, err := s.Parser.Parse(req.Markdown)
+	doc, source, err := s.Parser.Parse(req.Markdown)
 	if err != nil {
 		err = fmt.Errorf("markdown invalid: %w", err)
 		logger.With(ctx).Error("markdown validation failed", zap.Error(err))
-		return CreateDraftResponse{
+		return petrelmodels.CreateDraftResponse{
 			Status: "fail",
-			Drafts: []DraftResultEntry{}, // No drafts created
+			Drafts: []petrelmodels.DraftResultEntry{}, // No drafts created
 		}, err
 	}
 
 	// Walk AST and collect warnings
-	lintWarnings, err := s.Linter.Lint(doc, []byte(req.Markdown))
+	_, err = s.Linter.Lint(doc, source)
 
 	// TODO: 3. Route draft to each platform's DraftService (e.g. NotionDraftService.StageDraft)
+	notionDestinations := validated["notion"]
+	draftResponse, err := s.NotionDraftService.StageDraft(ctx, userID, notionDestinations, doc, source)
+	//_, err = s.NotionMapper.Map(ctx, doc, []byte(req.Markdown))
+	//if err != nil {
+	//	logger.With(ctx).Error("markdown to Notion block mapping failed", zap.Error(err))
+	//	return petrelmodels.CreateDraftResponse{
+	//		Status: "fail",
+	//		Drafts: nil,
+	//	}, fmt.Errorf("block mapping failed: %w", err)
+	//}
+
 	// TODO: 4. Collect DraftResultEntry per platform
 	// TODO: 5. Return combined CreateDraftResponse
 
 	logger.With(ctx).Info("Manuscript Service passed validation")
 
 	// Example placeholder success response
-	response := CreateDraftResponse{
+	response := petrelmodels.CreateDraftResponse{
 		Status: "success",
-		Drafts: []DraftResultEntry{
-			{
-				DraftID:      uuid.New().String(),
-				Platform:     "notion",
-				WorkspaceID:  req.Destinations[0].WorkspaceID,
-				PageID:       "mock-page-id",
-				URL:          "https://notion.so/mock-page-id",
-				Status:       "draft",
-				Action:       "created",
-				LintWarnings: lintWarnings,
-			},
-		},
+		Drafts: draftResponse,
 	}
 
 	return response, nil

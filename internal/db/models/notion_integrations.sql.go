@@ -136,14 +136,42 @@ func (q *Queries) GetDraftsPagesNeedingValidation(ctx context.Context) ([]Notion
 	return items, nil
 }
 
-const getNotionIntegrationByIntegrationID = `-- name: GetNotionIntegrationByIntegrationID :one
-SELECT id, integration_id, workspace_id, workspace_name, workspace_icon, bot_id, notion_user_id, notion_user_name, notion_user_avatar, notion_user_email, drafts_page_id, last_validated_at, drafts_page_status, created_at, updated_at FROM notion_integrations
-WHERE integration_id = $1
+const getNotionIntegrationAndTokenByUserAndWorkspace = `-- name: GetNotionIntegrationAndTokenByUserAndWorkspace :one
+SELECT
+    ni.id, ni.integration_id, ni.workspace_id, ni.workspace_name, ni.workspace_icon, ni.bot_id, ni.notion_user_id, ni.notion_user_name, ni.notion_user_avatar, ni.notion_user_email, ni.drafts_page_id, ni.last_validated_at, ni.drafts_page_status, ni.created_at, ni.updated_at,
+    i.access_token
+FROM notion_integrations ni
+         JOIN integrations i ON ni.integration_id = i.id
+WHERE i.user_id = $1 AND ni.workspace_id = $2
 `
 
-func (q *Queries) GetNotionIntegrationByIntegrationID(ctx context.Context, integrationID uuid.UUID) (NotionIntegration, error) {
-	row := q.db.QueryRow(ctx, getNotionIntegrationByIntegrationID, integrationID)
-	var i NotionIntegration
+type GetNotionIntegrationAndTokenByUserAndWorkspaceParams struct {
+	UserID      pgtype.UUID `json:"user_id"`
+	WorkspaceID string      `json:"workspace_id"`
+}
+
+type GetNotionIntegrationAndTokenByUserAndWorkspaceRow struct {
+	ID               uuid.UUID          `json:"id"`
+	IntegrationID    uuid.UUID          `json:"integration_id"`
+	WorkspaceID      string             `json:"workspace_id"`
+	WorkspaceName    pgtype.Text        `json:"workspace_name"`
+	WorkspaceIcon    pgtype.Text        `json:"workspace_icon"`
+	BotID            pgtype.Text        `json:"bot_id"`
+	NotionUserID     pgtype.Text        `json:"notion_user_id"`
+	NotionUserName   pgtype.Text        `json:"notion_user_name"`
+	NotionUserAvatar pgtype.Text        `json:"notion_user_avatar"`
+	NotionUserEmail  pgtype.Text        `json:"notion_user_email"`
+	DraftsPageID     pgtype.Text        `json:"drafts_page_id"`
+	LastValidatedAt  pgtype.Timestamp   `json:"last_validated_at"`
+	DraftsPageStatus pgtype.Text        `json:"drafts_page_status"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamp   `json:"updated_at"`
+	AccessToken      string             `json:"access_token"`
+}
+
+func (q *Queries) GetNotionIntegrationAndTokenByUserAndWorkspace(ctx context.Context, arg GetNotionIntegrationAndTokenByUserAndWorkspaceParams) (GetNotionIntegrationAndTokenByUserAndWorkspaceRow, error) {
+	row := q.db.QueryRow(ctx, getNotionIntegrationAndTokenByUserAndWorkspace, arg.UserID, arg.WorkspaceID)
+	var i GetNotionIntegrationAndTokenByUserAndWorkspaceRow
 	err := row.Scan(
 		&i.ID,
 		&i.IntegrationID,
@@ -160,24 +188,18 @@ func (q *Queries) GetNotionIntegrationByIntegrationID(ctx context.Context, integ
 		&i.DraftsPageStatus,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AccessToken,
 	)
 	return i, err
 }
 
-const getNotionIntegrationByUserAndWorkspace = `-- name: GetNotionIntegrationByUserAndWorkspace :one
-SELECT ni.id, ni.integration_id, ni.workspace_id, ni.workspace_name, ni.workspace_icon, ni.bot_id, ni.notion_user_id, ni.notion_user_name, ni.notion_user_avatar, ni.notion_user_email, ni.drafts_page_id, ni.last_validated_at, ni.drafts_page_status, ni.created_at, ni.updated_at
-FROM notion_integrations ni
-         JOIN integrations i ON ni.integration_id = i.id
-WHERE i.user_id = $1 AND ni.workspace_id = $2
+const getNotionIntegrationByIntegrationID = `-- name: GetNotionIntegrationByIntegrationID :one
+SELECT id, integration_id, workspace_id, workspace_name, workspace_icon, bot_id, notion_user_id, notion_user_name, notion_user_avatar, notion_user_email, drafts_page_id, last_validated_at, drafts_page_status, created_at, updated_at FROM notion_integrations
+WHERE integration_id = $1
 `
 
-type GetNotionIntegrationByUserAndWorkspaceParams struct {
-	UserID      pgtype.UUID `json:"user_id"`
-	WorkspaceID string      `json:"workspace_id"`
-}
-
-func (q *Queries) GetNotionIntegrationByUserAndWorkspace(ctx context.Context, arg GetNotionIntegrationByUserAndWorkspaceParams) (NotionIntegration, error) {
-	row := q.db.QueryRow(ctx, getNotionIntegrationByUserAndWorkspace, arg.UserID, arg.WorkspaceID)
+func (q *Queries) GetNotionIntegrationByIntegrationID(ctx context.Context, integrationID uuid.UUID) (NotionIntegration, error) {
+	row := q.db.QueryRow(ctx, getNotionIntegrationByIntegrationID, integrationID)
 	var i NotionIntegration
 	err := row.Scan(
 		&i.ID,
