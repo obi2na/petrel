@@ -39,8 +39,13 @@ type DraftResultEntry struct {
 }
 
 type ValidatedDestination struct {
+	NotionUserIntegration
 	Workspace string
-	Token     string
 	Append    bool
 	PageID    string
+}
+
+type NotionUserIntegration struct {
+	Token        string
+	DraftsRepoID string
 }

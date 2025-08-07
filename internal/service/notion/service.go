@@ -121,7 +121,7 @@ func (n *NotionOAuthService) ExchangeCodeForToken(ctx context.Context, params ut
 type DatabaseService interface {
 	SaveIntegration(ctx context.Context, userID uuid.UUID, token *NotionTokenResponse) (models.NotionIntegration, error)
 	CreatePetrelDraftsRepo(ctx context.Context, accessToken string) (string, error)
-	UserHasWorkspace(ctx context.Context, userID uuid.UUID, workspaceID string) (string, bool)
+	UserHasWorkspace(ctx context.Context, userID uuid.UUID, workspaceID string) (petrelmodels.NotionUserIntegration, bool)
 	IsValidDraftPage(ctx context.Context, userID uuid.UUID, pageID string) (bool, error)
 }
 
@@ -315,29 +315,32 @@ func (s *NotionDatabaseService) CreatePetrelDraftsRepo(ctx context.Context, acce
 	return page.ID.String(), nil
 }
 
-func (s *NotionDatabaseService) GetAccessTokenByUserAndWorkspace(ctx context.Context, userID uuid.UUID, workspaceID string) (string, error) {
+func (s *NotionDatabaseService) GetAccessTokenByUserAndWorkspace(ctx context.Context, userID uuid.UUID, workspaceID string) (models.GetNotionIntegrationAndTokenByUserAndWorkspaceRow, error) {
 	integration, err := s.DB.GetNotionIntegrationAndTokenByUserAndWorkspace(ctx,
 		models.GetNotionIntegrationAndTokenByUserAndWorkspaceParams{
 			UserID:      pgtype.UUID{Bytes: userID, Valid: true},
 			WorkspaceID: workspaceID,
 		})
 	if err != nil {
-		return "", fmt.Errorf("failed to fetch integration: %w", err)
+		return models.GetNotionIntegrationAndTokenByUserAndWorkspaceRow{}, fmt.Errorf("failed to fetch integration: %w", err)
 	}
-	return integration.AccessToken, nil
+	return integration, nil
 }
 
-func (s *NotionDatabaseService) UserHasWorkspace(ctx context.Context, userID uuid.UUID, workspaceID string) (string, bool) {
-	token, err := s.GetAccessTokenByUserAndWorkspace(ctx, userID, workspaceID)
+func (s *NotionDatabaseService) UserHasWorkspace(ctx context.Context, userID uuid.UUID, workspaceID string) (petrelmodels.NotionUserIntegration, bool) {
+	integration, err := s.GetAccessTokenByUserAndWorkspace(ctx, userID, workspaceID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			logger.With(ctx).Warn("User does not have access to this workspace", zap.String("workspace_id", workspaceID))
-			return "", false
+			return petrelmodels.NotionUserIntegration{}, false
 		}
 		logger.With(ctx).Error("DB error while checking workspace access", zap.Error(err))
-		return "", false
+		return petrelmodels.NotionUserIntegration{}, false
 	}
-	return token, true
+	return petrelmodels.NotionUserIntegration{
+		Token:        integration.AccessToken,
+		DraftsRepoID: integration.DraftsPageID.String,
+	}, true
 }
 
 func (s *NotionDatabaseService) IsValidDraftPage(ctx context.Context, userID uuid.UUID, pageID string) (bool, error) {
@@ -464,7 +467,7 @@ func (s *NotionDraftService) StageDraft(ctx context.Context, userID uuid.UUID, n
 		if dest.Append {
 			// TODO: append blocks to existing page
 		} else {
-			page, err = s.createNewDraftPage(ctx, dest.Token, dest.Workspace, blocks)
+			page, err = s.createNewDraftPage(ctx, dest.Token, dest.DraftsRepoID, blocks)
 		}
 
 		if err != nil {
@@ -494,11 +497,11 @@ func (s *NotionDraftService) StageDraft(ctx context.Context, userID uuid.UUID, n
 	return results, nil
 }
 
-func (s *NotionDraftService) createNewDraftPage(ctx context.Context, token, workspaceID string, children []notionapi.Block) (*notionapi.Page, error) {
+func (s *NotionDraftService) createNewDraftPage(ctx context.Context, token, draftsRepoID string, children []notionapi.Block) (*notionapi.Page, error) {
 	req := &notionapi.PageCreateRequest{
 		Parent: notionapi.Parent{
-			Type:      notionapi.ParentTypeWorkspace,
-			Workspace: true,
+			Type:   notionapi.ParentTypePageID,
+			PageID: notionapi.PageID(draftsRepoID),
 		},
 		Properties: notionapi.Properties{
 			"title": notionapi.TitleProperty{

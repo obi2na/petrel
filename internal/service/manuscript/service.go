@@ -20,7 +20,7 @@ type Service interface {
 }
 
 type WorkspaceValidator interface {
-	UserHasWorkspace(ctx context.Context, userID uuid.UUID, workspaceID string) (string, bool)
+	UserHasWorkspace(ctx context.Context, userID uuid.UUID, workspaceID string) (petrelmodels.NotionUserIntegration, bool)
 }
 
 // The ManuscriptService is responsible for:
@@ -75,7 +75,7 @@ func (s *ManuscriptService) validateDestinations(ctx context.Context, userID uui
 		}
 
 		// 2. Check user has access to workspace
-		token, ok := validator.UserHasWorkspace(ctx, userID, destination.WorkspaceID)
+		integration, ok := validator.UserHasWorkspace(ctx, userID, destination.WorkspaceID)
 		if !ok {
 			errStr := fmt.Sprintf("unauthorized access to %s workspace %s", destination.Platform, destination.WorkspaceID)
 			logger.With(ctx).Error(errStr)
@@ -108,8 +108,8 @@ func (s *ManuscriptService) validateDestinations(ctx context.Context, userID uui
 
 		// 4. Add validated destination to the map
 		validated := petrelmodels.ValidatedDestination{
-			Workspace: destination.WorkspaceID,
-			Token:     token,
+			Workspace:             destination.WorkspaceID,
+			NotionUserIntegration: integration,
 		}
 		result := validatedDestinations[destination.Platform]
 		result = append(result, validated)
@@ -149,14 +149,6 @@ func (s *ManuscriptService) StageDraft(ctx context.Context, userID uuid.UUID, re
 	// TODO: 3. Route draft to each platform's DraftService (e.g. NotionDraftService.StageDraft)
 	notionDestinations := validated["notion"]
 	draftResponse, err := s.NotionDraftService.StageDraft(ctx, userID, notionDestinations, doc, source)
-	//_, err = s.NotionMapper.Map(ctx, doc, []byte(req.Markdown))
-	//if err != nil {
-	//	logger.With(ctx).Error("markdown to Notion block mapping failed", zap.Error(err))
-	//	return petrelmodels.CreateDraftResponse{
-	//		Status: "fail",
-	//		Drafts: nil,
-	//	}, fmt.Errorf("block mapping failed: %w", err)
-	//}
 
 	// TODO: 4. Collect DraftResultEntry per platform
 	// TODO: 5. Return combined CreateDraftResponse
