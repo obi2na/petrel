@@ -39,8 +39,13 @@ type DraftResultEntry struct {
 }
 
 type ValidatedDestination struct {
+	UserIntegration
 	Workspace string
-	Token     string
 	Append    bool
 	PageID    string
+}
+
+type UserIntegration struct {
+	Token        string
+	DraftsRepoID string
 }
